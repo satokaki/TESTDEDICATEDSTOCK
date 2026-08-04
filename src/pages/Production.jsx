@@ -73,6 +73,8 @@ export default function Production() {
         gram: Number(c.gram || 0),
       }));
     } else {
+      const pgMaterial = materials.find(m => m.material_category === 'propylene_glycol');
+      const vgMaterial = materials.find(m => m.material_category === 'vegetable_glycerin');
       const result = calculateRecipe({
         ingredients: ingredients.map(i => ({ ...i })),
         targetVolume: targetQty,
@@ -80,6 +82,7 @@ export default function Production() {
         targetPG: recipe.target_pg,
         targetVG: recipe.target_vg,
         nicotineBaseStrength: ingredients.find(i => i.material_type === 'nicotine')?.nicotine_strength || 100,
+        pgMaterial, vgMaterial,
       });
       items = result.items;
     }

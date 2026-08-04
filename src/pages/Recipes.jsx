@@ -71,6 +71,8 @@ export default function Recipes() {
   // Live calculation
   useEffect(() => {
     if (form.ingredients.length === 0 || !form.target_volume) { setCalcResult(null); return; }
+    const pgMaterial = materials.find(m => m.material_category === 'propylene_glycol');
+    const vgMaterial = materials.find(m => m.material_category === 'vegetable_glycerin');
     const result = calculateRecipe({
       ingredients: form.ingredients.map(i => ({
         ...i,
@@ -84,9 +86,16 @@ export default function Recipes() {
       targetPG: toNumber(form.target_pg),
       targetVG: toNumber(form.target_vg),
       nicotineBaseStrength: form.ingredients.find(i => i.material_type === 'nicotine')?.nicotine_strength || 100,
+      pgMaterial, vgMaterial,
     });
     setCalcResult(result);
   }, [form.ingredients, form.target_volume, form.target_nicotine, form.target_pg, form.target_vg, materials]);
+
+  // Target PG/VG auto-sync: changing one updates the other to 100 - value.
+  // Returns '' when input is empty so the user can clear the field while typing.
+  const complement = (v) => (v === '' ? '' : String(parseFloat((100 - Number(v)).toFixed(4))));
+  const onTargetPg = (v) => setForm(f => ({ ...f, target_pg: v, target_vg: complement(v) }));
+  const onTargetVg = (v) => setForm(f => ({ ...f, target_vg: v, target_pg: complement(v) }));
 
   const openAdd = () => {
     setEditing(null);
@@ -262,6 +271,8 @@ export default function Recipes() {
   ];
 
   const mcLabel = { flavor: 'Flavor', propylene_glycol: 'PG', vegetable_glycerin: 'VG', nicotine: 'Nicotine', sweetener: 'Sweetener', cooling: 'Cooling', additive: 'Additive', premix: 'Premix', lainnya: 'Lainnya' };
+  const tpPg = toNumber(form.target_pg);
+  const tpVg = toNumber(form.target_vg);
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
@@ -323,8 +334,8 @@ export default function Recipes() {
             <>
               <div><Label className="text-[12.5px] mb-1">Target Volume (ml)</Label><NumberInput value={form.target_volume} onChange={v => setForm({ ...form, target_volume: v })} maxDecimals={2} className="h-9 text-[13px]" /></div>
               <div><Label className="text-[12.5px] mb-1">Target Nicotine (mg/ml)</Label><NumberInput value={form.target_nicotine} onChange={v => setForm({ ...form, target_nicotine: v })} maxDecimals={2} className="h-9 text-[13px]" /></div>
-              <div><Label className="text-[12.5px] mb-1">Target PG (%)</Label><NumberInput value={form.target_pg} onChange={v => setForm({ ...form, target_pg: v })} maxDecimals={2} className="h-9 text-[13px]" /></div>
-              <div><Label className="text-[12.5px] mb-1">Target VG (%)</Label><NumberInput value={form.target_vg} onChange={v => setForm({ ...form, target_vg: v })} maxDecimals={2} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target PG (%)</Label><NumberInput value={form.target_pg} onChange={onTargetPg} max={100} maxDecimals={2} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target VG (%)</Label><NumberInput value={form.target_vg} onChange={onTargetVg} max={100} maxDecimals={2} className="h-9 text-[13px]" /></div>
             </>
           )}
         </div>
@@ -379,6 +390,20 @@ export default function Recipes() {
                 {calcResult.validation.errors.map((err, i) => <div key={i}>⚠ {err}</div>)}
               </div>
             )}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11.5px] mb-2">
+              <div>Target PG</div><div className="text-right tabular-nums">{tpPg.toFixed(2)}%</div>
+              <div>Target VG</div><div className="text-right tabular-nums">{tpVg.toFixed(2)}%</div>
+              <div className="text-muted-foreground pl-2">PG dari Flavor</div><div className="text-right tabular-nums text-muted-foreground">{calcResult.breakdown.flavor.toFixed(2)}%</div>
+              <div className="text-muted-foreground pl-2">PG dari Nicotine</div><div className="text-right tabular-nums text-muted-foreground">{calcResult.breakdown.nicotine.toFixed(2)}%</div>
+              <div className="text-muted-foreground pl-2">PG dari Sweetener</div><div className="text-right tabular-nums text-muted-foreground">{calcResult.breakdown.sweetener.toFixed(2)}%</div>
+              <div className="text-muted-foreground pl-2">PG dari Premix lain</div><div className="text-right tabular-nums text-muted-foreground">{calcResult.breakdown.premix.toFixed(2)}%</div>
+              <div className="text-muted-foreground pl-2">VG dari bahan lain</div><div className="text-right tabular-nums text-muted-foreground">{calcResult.breakdown.otherVg.toFixed(2)}%</div>
+              <div className="font-medium pl-2">PG murni tambahan</div><div className="text-right tabular-nums font-medium">{calcResult.plainPg.toFixed(2)}%</div>
+              <div className="font-medium pl-2">VG murni tambahan</div><div className="text-right tabular-nums font-medium">{calcResult.plainVg.toFixed(2)}%</div>
+              <div className="font-semibold border-t pt-0.5">Total PG akhir</div><div className="text-right tabular-nums font-semibold border-t pt-0.5">{calcResult.totalPG.toFixed(2)}%</div>
+              <div className="font-semibold">Total VG akhir</div><div className="text-right tabular-nums font-semibold">{calcResult.totalVG.toFixed(2)}%</div>
+              <div className="font-semibold">Total Formula</div><div className="text-right tabular-nums font-semibold">{calcResult.totalPercent.toFixed(2)}%</div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-[11.5px]">
                 <thead><tr className="bg-muted/40 text-muted-foreground">
@@ -389,8 +414,11 @@ export default function Recipes() {
                 </tr></thead>
                 <tbody>
                   {calcResult.items.map((item, i) => (
-                    <tr key={i} className="border-b border-border/30">
-                      <td className="px-2 py-1">{item.material_name || mcLabel[item.material_type] || item.material_type}</td>
+                    <tr key={i} className={`border-b border-border/30 ${item.isAuto ? 'bg-blue-50/40' : ''}`}>
+                      <td className="px-2 py-1">
+                        {item.material_name || mcLabel[item.material_type] || item.material_type}
+                        {item.isAuto && <span className="ml-1 text-[9px] px-1 py-0.5 bg-blue-100 text-blue-700 rounded">Auto</span>}
+                      </td>
                       <td className="px-2 py-1 text-right tabular-nums">{item.percentage.toFixed(2)}%</td>
                       <td className="px-2 py-1 text-right tabular-nums">{item.volumeMl.toFixed(2)}</td>
                       <td className="px-2 py-1 text-right tabular-nums">{item.gram.toFixed(2)}</td>
@@ -404,12 +432,6 @@ export default function Recipes() {
                   <td className="px-2 py-1 text-right tabular-nums">{calcResult.totalGram.toFixed(2)}</td>
                 </tr></tfoot>
               </table>
-            </div>
-            <div className="grid grid-cols-4 gap-2 mt-2 text-[11px]">
-              <div className="bg-muted/40 rounded px-2 py-1">Total Flavor: <b>{calcResult.totalFlavor.toFixed(1)}%</b></div>
-              <div className="bg-muted/40 rounded px-2 py-1">PG: <b>{calcResult.totalPG.toFixed(1)}%</b></div>
-              <div className="bg-muted/40 rounded px-2 py-1">VG: <b>{calcResult.totalVG.toFixed(1)}%</b></div>
-              <div className="bg-muted/40 rounded px-2 py-1">Nicotine: <b>{calcResult.nicotineVolume.toFixed(1)} ml</b></div>
             </div>
           </div>
         )}
