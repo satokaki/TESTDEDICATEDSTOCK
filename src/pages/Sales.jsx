@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, X, CheckCircle } from 'lucide-react';
 import { generateInvoiceNumber } from '@/lib/sequence';
 import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
+import NumberInput from '@/components/NumberInput';
 
 export default function Sales() {
   const { toast } = useToast();
@@ -57,7 +58,7 @@ export default function Sales() {
   };
 
   const addItem = () => setForm(f => ({ ...f, items: [...f.items, { product_id: '', product_name: '', batch_number: '', quantity: 1, unit: 'unit', price: 0, discount: 0 }] }));
-  const updateItem = (idx, field, value) => setForm(f => { const items = [...f.items]; if (field === 'product_id') { const p = products.find(x => x.id === value); const s = siapJualStock.find(x => x.item_id === value); items[idx] = { ...items[idx], product_id: value, product_name: p?.name || '', batch_number: s?.batch_number || '', price: p?.sale_price || 0 }; } else { items[idx] = { ...items[idx], [field]: field === 'quantity' || field === 'price' || field === 'discount' ? Number(value) : value }; } return { ...f, items }; });
+  const updateItem = (idx, field, value) => setForm(f => { const items = [...f.items]; if (field === 'product_id') { const p = products.find(x => x.id === value); const s = siapJualStock.find(x => x.item_id === value); items[idx] = { ...items[idx], product_id: value, product_name: p?.name || '', batch_number: s?.batch_number || '', price: p?.sale_price || 0 }; } else { items[idx] = { ...items[idx], [field]: value }; } return { ...f, items }; });
   const removeItem = (idx) => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
 
   const handleSubmit = async () => {
@@ -169,7 +170,7 @@ export default function Sales() {
             </Select>
           </div>
           {form.payment_method === 'tempo' && (
-            <div><Label className="text-[12.5px] mb-1">Termin (hari)</Label><Input type="number" value={form.payment_terms} onChange={e => setForm({ ...form, payment_terms: e.target.value })} className="h-9 text-[13px]" /></div>
+            <div><Label className="text-[12.5px] mb-1">Termin (hari)</Label><NumberInput value={form.payment_terms} onChange={v => setForm({ ...form, payment_terms: v })} allowDecimal={false} min={0} className="h-9 text-[13px]" /></div>
           )}
         </div>
 
@@ -200,9 +201,9 @@ export default function Sales() {
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className="px-2 py-1"><Input type="number" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="h-7 text-[11.5px] text-right" /></td>
-                    <td className="px-2 py-1"><Input type="number" value={item.price} onChange={e => updateItem(idx, 'price', e.target.value)} className="h-7 text-[11.5px] text-right" /></td>
-                    <td className="px-2 py-1"><Input type="number" value={item.discount} onChange={e => updateItem(idx, 'discount', e.target.value)} className="h-7 text-[11.5px] text-right" /></td>
+                    <td className="px-2 py-1"><NumberInput value={item.quantity} onChange={v => updateItem(idx, 'quantity', v)} allowDecimal={false} min={0} className="h-7 text-[11.5px] text-right" /></td>
+                    <td className="px-2 py-1"><NumberInput value={item.price} onChange={v => updateItem(idx, 'price', v)} allowDecimal min={0} className="h-7 text-[11.5px] text-right" /></td>
+                    <td className="px-2 py-1"><NumberInput value={item.discount} onChange={v => updateItem(idx, 'discount', v)} allowDecimal min={0} className="h-7 text-[11.5px] text-right" /></td>
                     <td className="px-2 py-1 text-right tabular-nums">{fmtMoney(Number(item.quantity) * Number(item.price) - Number(item.discount || 0))}</td>
                     <td className="px-1 py-1"><button type="button" onClick={() => removeItem(idx)} className="p-0.5 hover:bg-red-50 rounded text-red-500"><X className="w-3.5 h-3.5" /></button></td>
                   </tr>

@@ -15,6 +15,7 @@ import { calculateRecipe } from '@/lib/recipeCalculator';
 import { calculatePremixQuantities } from '@/lib/premix';
 import { generateProductionNumber, generateBatchNumber } from '@/lib/sequence';
 import { recordStockMovement, getStockBalance, createAuditLog } from '@/lib/stockUtils';
+import NumberInput from '@/components/NumberInput';
 
 export default function Production() {
   const { toast } = useToast();
@@ -298,7 +299,7 @@ export default function Production() {
               <SelectContent>{recipes.map(r => <SelectItem key={r.id} value={r.id}>{r.code} · {r.name} (v{r.version})</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div><Label className="text-[12.5px] mb-1">{targetLabel}</Label><Input type="number" value={form.target_volume} onChange={e => setForm({ ...form, target_volume: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">{targetLabel}</Label><NumberInput value={form.target_volume} onChange={v => setForm({ ...form, target_volume: v })} allowDecimal min={0} maxDecimals={2} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Tanggal Produksi</Label><Input type="date" value={form.production_date} onChange={e => setForm({ ...form, production_date: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Operator *</Label><Input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Catatan</Label><Input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="h-9 text-[13px]" /></div>
@@ -374,7 +375,7 @@ export default function Production() {
                   <tr key={m.id} className="border-b border-border/30">
                     <td className="px-2 py-1">{m.material_name}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{m.required_gram?.toFixed(2)}</td>
-                    <td className="px-2 py-1"><Input type="number" step="0.01" value={actualGrams[m.material_id] || ''} onChange={e => setActualGrams({ ...actualGrams, [m.material_id]: e.target.value })} className="h-7 text-[11.5px] text-right" /></td>
+                    <td className="px-2 py-1"><NumberInput value={actualGrams[m.material_id]} onChange={v => setActualGrams({ ...actualGrams, [m.material_id]: v })} allowDecimal min={0} maxDecimals={3} className="h-7 text-[11.5px] text-right" /></td>
                     <td className={`px-2 py-1 text-right tabular-nums ${dev > 0.1 ? 'text-amber-600' : dev < -0.1 ? 'text-red-600' : 'text-emerald-600'}`}>{dev.toFixed(2)}</td>
                   </tr>
                 );

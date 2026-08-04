@@ -9,9 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Download, TrendingUp } from 'lucide-react';
+import PdfButton from '@/components/PdfButton';
+import { exportReportToPDF } from '@/lib/pdfExport';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function SalesReport() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ date_from: '', date_to: '', customer_id: '', payment_method: '', transaction_status: '', payment_status: '' });
@@ -61,6 +65,31 @@ export default function SalesReport() {
     toast({ title: 'Laporan diexport' });
   };
 
+  const exportPDF = () => exportReportToPDF({
+    title: 'Laporan Penjualan',
+    subtitle: `${filtered.length} invoice · Total ${fmtMoney(totalSales)}`,
+    meta: { company: 'LAB PRO', period: `${filters.date_from || 'Awal'} – ${filters.date_to || 'Akhir'}`, printedBy: user?.full_name },
+    columns: [
+      { key: 'invoice_number', header: 'No. Invoice' },
+      { key: 'transaction_date', header: 'Tanggal' },
+      { key: 'customer_name', header: 'Customer' },
+      { key: 'sales_person', header: 'Sales' },
+      { key: 'total', header: 'Total', align: 'right' },
+      { key: 'total_payment', header: 'Pembayaran', align: 'right' },
+      { key: 'remaining_receivable', header: 'Sisa Piutang', align: 'right' },
+      { key: 'due_date', header: 'Jatuh Tempo' },
+      { key: 'payment_status', header: 'Status' },
+    ],
+    rows: filtered.map(r => ({
+      invoice_number: r.invoice_number, transaction_date: r.transaction_date,
+      customer_name: r.customer_name, sales_person: r.sales_person || '-',
+      total: fmtMoney(r.total), total_payment: fmtMoney(r.total_payment),
+      remaining_receivable: fmtMoney(r.remaining_receivable), due_date: r.due_date || '-',
+      payment_status: r.payment_status,
+    })),
+    fileName: `laporan-penjualan-${Date.now()}.pdf`,
+  });
+
   const columns = [
     { key: 'invoice_number', header: 'No. Invoice', sortable: true, className: 'font-mono font-medium' },
     { key: 'transaction_date', header: 'Tanggal', sortable: true },
@@ -76,7 +105,7 @@ export default function SalesReport() {
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
       <PageHeader title="Laporan Penjualan" description="Laporan penjualan dengan filter dan ringkasan"
-        actions={<Button onClick={exportCSV} size="sm" variant="outline" className="gap-1.5"><Download className="w-4 h-4" /> Export CSV</Button>} />
+        actions={<div className="flex items-center gap-2"><Button onClick={exportCSV} size="sm" variant="outline" className="gap-1.5"><Download className="w-4 h-4" /> Export CSV</Button><PdfButton onExport={exportPDF} /></div>} />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">

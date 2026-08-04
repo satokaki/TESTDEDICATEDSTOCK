@@ -3,44 +3,101 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 // Mirror of src/lib/permissions.js — default permission matrix per role.
 const MENU_CATALOG = [
   { key: 'dashboard', actions: ['view'] },
-  { key: 'recipes', actions: ['view', 'create', 'edit', 'delete'] },
-  { key: 'production', actions: ['view', 'create', 'edit'] },
+  { key: 'recipes', actions: ['view', 'create', 'edit', 'delete', 'approve'] },
+  { key: 'production', actions: ['view', 'create', 'edit', 'post', 'cancel'] },
   { key: 'premix', actions: ['view', 'create', 'edit', 'post', 'cancel'] },
   { key: 'premix_batch', actions: ['view', 'adjust'] },
-  { key: 'bottling', actions: ['view', 'create'] },
-  { key: 'labeling', actions: ['view', 'create'] },
-  { key: 'excise', actions: ['view', 'create'] },
-  { key: 'purchases', actions: ['view', 'create', 'edit'] },
-  { key: 'sales', actions: ['view', 'create', 'edit', 'delete'] },
+  { key: 'bottling', actions: ['view', 'create', 'edit', 'post', 'cancel'] },
+  { key: 'labeling', actions: ['view', 'create', 'edit', 'post', 'cancel'] },
+  { key: 'excise', actions: ['view', 'create', 'edit', 'post', 'cancel'] },
+  { key: 'purchases', actions: ['view', 'create', 'edit', 'post', 'cancel', 'print'] },
+  { key: 'sales', actions: ['view', 'create', 'edit', 'delete', 'post', 'print'] },
   { key: 'payments', actions: ['view', 'create', 'edit'] },
   { key: 'stock_card', actions: ['view'] },
   { key: 'report_sales', actions: ['view'] },
   { key: 'report_receivables', actions: ['view'] },
   { key: 'traceability', actions: ['view'] },
+  { key: 'master_brands', actions: ['view', 'create', 'edit', 'delete'] },
+  { key: 'master_categories', actions: ['view', 'create', 'edit', 'delete'] },
+  { key: 'master_suppliers', actions: ['view', 'create', 'edit', 'delete'] },
+  { key: 'master_customers', actions: ['view', 'create', 'edit', 'delete'] },
+  { key: 'master_materials', actions: ['view', 'create', 'edit', 'delete'] },
+  { key: 'master_products', actions: ['view', 'create', 'edit', 'delete'] },
+  { key: 'master_warehouses', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'master', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'users', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'settings', actions: ['view'] },
 ];
 
+const MASTER_ENTITY_KEYS = ['master_brands', 'master_categories', 'master_suppliers', 'master_customers', 'master_materials', 'master_products', 'master_warehouses'];
+
 const OPERATOR_DEFAULTS = {
   dashboard: { view: true },
-  recipes: { view: true, create: true, edit: true, delete: false },
-  production: { view: true, create: true, edit: true },
+  recipes: { view: true, create: true, edit: true, delete: false, approve: false },
+  production: { view: true, create: true, edit: true, post: true, cancel: false },
   premix: { view: true, create: true, edit: true, post: true, cancel: false },
   premix_batch: { view: true, adjust: false },
-  bottling: { view: true, create: true },
-  labeling: { view: true, create: true },
-  excise: { view: true, create: true },
-  purchases: { view: true, create: true, edit: true },
-  sales: { view: true, create: true, edit: true, delete: false },
+  bottling: { view: true, create: true, edit: true, post: true, cancel: false },
+  labeling: { view: true, create: true, edit: true, post: true, cancel: false },
+  excise: { view: true, create: true, edit: true, post: true, cancel: false },
+  purchases: { view: true, create: true, edit: true, post: true, cancel: false, print: true },
+  sales: { view: true, create: true, edit: true, delete: false, post: true, print: true },
   payments: { view: true, create: true, edit: true },
   stock_card: { view: true },
   report_sales: { view: true },
   report_receivables: { view: true },
   traceability: { view: true },
   master: { view: true, create: true, edit: true, delete: false },
+  ...Object.fromEntries(MASTER_ENTITY_KEYS.map((k) => [k, { view: true, create: true, edit: true, delete: false }])),
   users: { view: false, create: false, edit: false, delete: false },
   settings: { view: false },
+};
+
+const SALES_DEFAULTS = {
+  dashboard: { view: true },
+  sales: { view: true, create: true, edit: true, delete: false, post: true, print: true },
+  payments: { view: true },
+  stock_card: { view: true },
+  master_customers: { view: true, create: true, edit: true, delete: false },
+  master_products: { view: true, create: false, edit: false, delete: false },
+  report_sales: { view: true },
+  report_receivables: { view: true },
+};
+
+const PRODUCTION_HEAD_DEFAULTS = {
+  dashboard: { view: true },
+  recipes: { view: true, create: false, edit: false, delete: false, approve: false },
+  production: { view: true, create: true, edit: true, post: true, cancel: true },
+  premix: { view: true, create: true, edit: true, post: true, cancel: true },
+  premix_batch: { view: true, adjust: false },
+  bottling: { view: true, create: true, edit: true, post: true, cancel: true },
+  labeling: { view: true, create: true, edit: true, post: true, cancel: true },
+  excise: { view: true, create: true, edit: true, post: true, cancel: true },
+  purchases: { view: true, create: true, edit: true, post: true, cancel: true, print: true },
+  stock_card: { view: true },
+  traceability: { view: true },
+  master_materials: { view: true, create: true, edit: true, delete: false },
+  master_products: { view: true, create: true, edit: true, delete: false },
+  master_suppliers: { view: true, create: true, edit: true, delete: false },
+  master_brands: { view: true, create: false, edit: false, delete: false },
+  master_categories: { view: true, create: false, edit: false, delete: false },
+  master_warehouses: { view: true, create: false, edit: false, delete: false },
+};
+
+const BREWER_DEFAULTS = {
+  dashboard: { view: true },
+  recipes: { view: true, create: false, edit: false, delete: false, approve: false },
+  production: { view: true, create: true, edit: false, post: false, cancel: false },
+  premix: { view: true, create: true, edit: false, post: false, cancel: false },
+  stock_card: { view: true },
+  traceability: { view: true },
+};
+
+const ROLE_DEFAULTS = {
+  user: OPERATOR_DEFAULTS,
+  sales: SALES_DEFAULTS,
+  production_head: PRODUCTION_HEAD_DEFAULTS,
+  brewer: BREWER_DEFAULTS,
 };
 
 function defaultPermissions(role) {
@@ -50,8 +107,9 @@ function defaultPermissions(role) {
     for (const a of m.actions) base[m.key][a] = role === 'admin';
   }
   if (role === 'admin') return base;
-  for (const k of Object.keys(OPERATOR_DEFAULTS)) {
-    base[k] = { ...base[k], ...OPERATOR_DEFAULTS[k] };
+  const defaults = ROLE_DEFAULTS[role] || OPERATOR_DEFAULTS;
+  for (const k of Object.keys(defaults)) {
+    base[k] = { ...base[k], ...defaults[k] };
   }
   return base;
 }

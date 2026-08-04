@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Trash2 } from 'lucide-react';
 import { generatePaymentNumber } from '@/lib/sequence';
 import { createAuditLog } from '@/lib/stockUtils';
+import NumberInput from '@/components/NumberInput';
 
 export default function Payments() {
   const { toast } = useToast();
@@ -56,8 +57,9 @@ export default function Payments() {
   const updateAllocation = (idx, value) => {
     setAllocations(prev => {
       const next = [...prev];
-      const val = Math.min(Number(value), next[idx].invoice_balance_before);
-      next[idx] = { ...next[idx], allocated_amount: val, invoice_balance_after: next[idx].invoice_balance_before - val };
+      const n = value === '' || value === null ? 0 : Number(value);
+      const val = Math.min(n, next[idx].invoice_balance_before);
+      next[idx] = { ...next[idx], allocated_amount: value === '' ? '' : String(val), invoice_balance_after: next[idx].invoice_balance_before - val };
       return next;
     });
   };
@@ -152,7 +154,7 @@ export default function Payments() {
             </Select>
           </div>
           <div><Label className="text-[12.5px] mb-1">Tanggal</Label><Input type="date" value={form.payment_date} onChange={e => setForm({ ...form, payment_date: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Total Pembayaran *</Label><Input type="number" value={form.total_payment} onChange={e => setForm({ ...form, total_payment: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Total Pembayaran *</Label><NumberInput value={form.total_payment} onChange={v => setForm({ ...form, total_payment: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
           <div>
             <Label className="text-[12.5px] mb-1">Metode</Label>
             <Select value={form.payment_method} onValueChange={v => setForm({ ...form, payment_method: v })}>
@@ -183,7 +185,7 @@ export default function Payments() {
                     <tr key={idx} className="border-b border-border/30">
                       <td className="px-2 py-1 font-mono">{a.invoice_number}</td>
                       <td className="px-2 py-1 text-right tabular-nums">{fmtMoney(a.invoice_balance_before)}</td>
-                      <td className="px-2 py-1"><Input type="number" value={a.allocated_amount} onChange={e => updateAllocation(idx, e.target.value)} className="h-7 text-[11.5px] text-right" max={a.invoice_balance_before} /></td>
+                      <td className="px-2 py-1"><NumberInput value={a.allocated_amount} onChange={v => updateAllocation(idx, v)} allowDecimal min={0} className="h-7 text-[11.5px] text-right" max={a.invoice_balance_before} /></td>
                       <td className="px-2 py-1 text-right tabular-nums">{fmtMoney(a.invoice_balance_after)}</td>
                     </tr>
                   ))}

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, CheckCircle } from 'lucide-react';
 import { generateOrderNumber } from '@/lib/sequence';
 import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
+import NumberInput from '@/components/NumberInput';
 
 export default function Labeling() {
   const { toast } = useToast();
@@ -133,8 +134,8 @@ export default function Labeling() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><Label className="text-[12.5px] mb-1">Merk</Label><Input value={brands.find(b => b.id === form.brand_id)?.name || ''} disabled className="h-9 text-[13px] bg-muted/40" /></div>
-          <div><Label className="text-[12.5px] mb-1">Ukuran Botol (ml)</Label><Input type="number" value={form.bottle_size} onChange={e => setForm({ ...form, bottle_size: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Jumlah *</Label><Input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Ukuran Botol (ml)</Label><NumberInput value={form.bottle_size} onChange={v => setForm({ ...form, bottle_size: v })} allowDecimal maxDecimals={1} min={0} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Jumlah *</Label><NumberInput value={form.quantity} onChange={v => setForm({ ...form, quantity: v })} allowDecimal={false} min={0} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Jenis Label</Label><Input value={form.label_type} onChange={e => setForm({ ...form, label_type: e.target.value })} className="h-9 text-[13px]" placeholder="Contoh: Label Standard" /></div>
           <div><Label className="text-[12.5px] mb-1">Tanggal Labeling</Label><Input type="date" value={form.labeling_date} onChange={e => setForm({ ...form, labeling_date: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Operator *</Label><Input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} className="h-9 text-[13px]" /></div>

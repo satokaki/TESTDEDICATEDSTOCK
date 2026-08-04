@@ -28,13 +28,13 @@ const menuItems = [
 ];
 
 const masterItems = [
-  { label: 'Merk', path: '/master/brands' },
-  { label: 'Kategori', path: '/master/categories' },
-  { label: 'Supplier', path: '/master/suppliers' },
-  { label: 'Customer', path: '/master/customers' },
-  { label: 'Bahan', path: '/master/materials' },
-  { label: 'Barang', path: '/master/products' },
-  { label: 'Gudang', path: '/master/warehouses' },
+  { label: 'Merk', path: '/master/brands', perm: 'master_brands' },
+  { label: 'Kategori', path: '/master/categories', perm: 'master_categories' },
+  { label: 'Supplier', path: '/master/suppliers', perm: 'master_suppliers' },
+  { label: 'Customer', path: '/master/customers', perm: 'master_customers' },
+  { label: 'Bahan', path: '/master/materials', perm: 'master_materials' },
+  { label: 'Barang', path: '/master/products', perm: 'master_products' },
+  { label: 'Gudang', path: '/master/warehouses', perm: 'master_warehouses' },
 ];
 
 export default function Layout() {
@@ -57,6 +57,8 @@ export default function Layout() {
 
   const canSee = (perm) => hasPermission(user, perm, 'view');
   const filteredMenu = (group) => menuItems.filter((i) => i.group === group && canSee(i.perm));
+  const visibleMasterItems = masterItems.filter((i) => canSee(i.perm));
+  const canSeeMaster = visibleMasterItems.length > 0 || canSee('master');
 
   const NavLink = ({ item }) => {
     const Icon = item.icon;
@@ -119,7 +121,7 @@ export default function Layout() {
             </>
           )}
 
-          {canSee('master') && (
+          {canSeeMaster && (
             <>
               <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Master Data</div>
               <button
@@ -132,7 +134,7 @@ export default function Layout() {
               </button>
               {masterOpen && (
                 <div className="space-y-0.5 pl-4">
-                  {masterItems.map((item) => (
+                  {visibleMasterItems.map((item) => (
                     <Link
                       key={item.path}
                       to={item.path}

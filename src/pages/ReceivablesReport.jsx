@@ -9,6 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Download } from 'lucide-react';
+import PdfButton from '@/components/PdfButton';
+import { exportReportToPDF } from '@/lib/pdfExport';
+import { useAuth } from '@/lib/AuthContext';
 
 const agingBuckets = (days) => {
   if (days < 0) return 'belum_jatuh_tempo';
@@ -22,6 +25,7 @@ const bucketLabel = { belum_jatuh_tempo: 'Belum Jatuh Tempo', '1-7': '1–7 hari
 
 export default function ReceivablesReport() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [data, setData] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +72,30 @@ export default function ReceivablesReport() {
     toast({ title: 'Laporan diexport' });
   };
 
+  const exportPDF = () => exportReportToPDF({
+    title: 'Laporan Piutang',
+    subtitle: `${filtered.length} invoice · Total Piutang ${fmtMoney(totalPiutang)}`,
+    meta: { company: 'LAB PRO', printedBy: user?.full_name },
+    columns: [
+      { key: 'customer_name', header: 'Customer' },
+      { key: 'invoice_number', header: 'Invoice' },
+      { key: 'transaction_date', header: 'Tanggal' },
+      { key: 'total', header: 'Nilai', align: 'right' },
+      { key: 'total_payment', header: 'Pembayaran', align: 'right' },
+      { key: 'remaining_receivable', header: 'Sisa Piutang', align: 'right' },
+      { key: 'due_date', header: 'Jatuh Tempo' },
+      { key: 'overdue_days', header: 'Hari Telat', align: 'right' },
+      { key: 'aging_bucket', header: 'Umur Piutang' },
+      { key: 'payment_status', header: 'Status' },
+    ],
+    rows: filtered.map(r => ({
+      customer_name: r.customer_name, invoice_number: r.invoice_number, transaction_date: r.transaction_date,
+      total: fmtMoney(r.total), total_payment: fmtMoney(r.total_payment), remaining_receivable: fmtMoney(r.remaining_receivable),
+      due_date: r.due_date || '-', overdue_days: r.overdue_days, aging_bucket: bucketLabel[r.aging_bucket], payment_status: r.payment_status,
+    })),
+    fileName: `laporan-piutang-${Date.now()}.pdf`,
+  });
+
   const columns = [
     { key: 'customer_name', header: 'Customer', sortable: true, className: 'font-medium' },
     { key: 'invoice_number', header: 'Invoice', className: 'font-mono' },
@@ -84,7 +112,7 @@ export default function ReceivablesReport() {
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
       <PageHeader title="Laporan Piutang" description="Laporan piutang dengan aging analysis"
-        actions={<Button onClick={exportCSV} size="sm" variant="outline" className="gap-1.5"><Download className="w-4 h-4" /> Export CSV</Button>} />
+        actions={<div className="flex items-center gap-2"><Button onClick={exportCSV} size="sm" variant="outline" className="gap-1.5"><Download className="w-4 h-4" /> Export CSV</Button><PdfButton onExport={exportPDF} /></div>} />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div className="bg-white border border-border rounded-lg p-3"><div className="text-[11px] text-muted-foreground uppercase">Total Piutang</div><div className="text-base font-bold mt-1 tabular-nums text-red-600">{fmtMoney(totalPiutang)}</div></div>

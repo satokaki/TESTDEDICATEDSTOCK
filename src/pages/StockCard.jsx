@@ -8,6 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Download, Search } from 'lucide-react';
+import PdfButton from '@/components/PdfButton';
+import { exportReportToPDF } from '@/lib/pdfExport';
+import { useAuth } from '@/lib/AuthContext';
 
 const transactionTypeLabels = {
   opening_balance: 'Opening Balance',
@@ -30,6 +33,7 @@ const transactionTypeLabels = {
 
 export default function StockCard() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ item_type: '', transaction_type: '', item_name: '', date_from: '', date_to: '' });
@@ -70,6 +74,32 @@ export default function StockCard() {
     toast({ title: 'Kartu stok diexport' });
   };
 
+  const exportPDF = () => exportReportToPDF({
+    title: 'Kartu Stok',
+    subtitle: `${filtered.length} mutasi`,
+    meta: { company: 'LAB PRO', printedBy: user?.full_name },
+    columns: [
+      { key: 'transaction_date', header: 'Tanggal' },
+      { key: 'transaction_number', header: 'No. Transaksi' },
+      { key: 'transaction_type', header: 'Tipe' },
+      { key: 'item_name', header: 'Item' },
+      { key: 'batch_number', header: 'Batch' },
+      { key: 'quantity_in', header: 'Masuk', align: 'right' },
+      { key: 'quantity_out', header: 'Keluar', align: 'right' },
+      { key: 'unit', header: 'Satuan' },
+      { key: 'reference_number', header: 'Referensi' },
+    ],
+    rows: filtered.map(r => ({
+      transaction_date: r.transaction_date?.slice(0, 19).replace('T', ' '),
+      transaction_number: r.transaction_number || '',
+      transaction_type: transactionTypeLabels[r.transaction_type] || r.transaction_type,
+      item_name: r.item_name || '', batch_number: r.batch_number || '',
+      quantity_in: r.quantity_in || '', quantity_out: r.quantity_out || '',
+      unit: r.unit || '', reference_number: r.reference_number || '',
+    })),
+    fileName: `kartu-stok-${Date.now()}.pdf`,
+  });
+
   const columns = [
     { key: 'transaction_date', header: 'Tanggal', sortable: true, render: (row) => row.transaction_date?.slice(0, 19).replace('T', ' ') },
     { key: 'transaction_number', header: 'No. Transaksi', className: 'font-mono' },
@@ -85,7 +115,7 @@ export default function StockCard() {
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
       <PageHeader title="Kartu Stok" description="Mutasi persediaan berdasarkan stock ledger"
-        actions={<Button onClick={exportCSV} size="sm" variant="outline" className="gap-1.5"><Download className="w-4 h-4" /> Export CSV</Button>} />
+        actions={<div className="flex items-center gap-2"><Button onClick={exportCSV} size="sm" variant="outline" className="gap-1.5"><Download className="w-4 h-4" /> Export CSV</Button><PdfButton onExport={exportPDF} /></div>} />
 
       {/* Filters */}
       <div className="bg-white border border-border rounded-lg p-3 mb-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5">

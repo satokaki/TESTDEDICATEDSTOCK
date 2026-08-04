@@ -13,6 +13,7 @@ import { Plus, Play, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { generateOrderNumber } from '@/lib/sequence';
 import { recordStockMovement, createAuditLog } from '@/lib/stockUtils';
+import NumberInput from '@/components/NumberInput';
 
 export default function Bottling() {
   const { toast } = useToast();
@@ -52,7 +53,7 @@ export default function Bottling() {
   };
 
   const addOutput = () => setForm(f => ({ ...f, outputs: [...f.outputs, { product_id: '', bottle_count: 0, volume_per_bottle: 0 }] }));
-  const updateOutput = (idx, field, value) => setForm(f => { const o = [...f.outputs]; o[idx] = { ...o[idx], [field]: field === 'product_id' ? value : Number(value) }; return { ...f, outputs: o }; });
+  const updateOutput = (idx, field, value) => setForm(f => { const o = [...f.outputs]; o[idx] = { ...o[idx], [field]: value }; return { ...f, outputs: o }; });
   const removeOutput = (idx) => setForm(f => ({ ...f, outputs: f.outputs.filter((_, i) => i !== idx) }));
 
   const handleSubmit = async () => {
@@ -140,7 +141,7 @@ export default function Bottling() {
           </div>
           <div><Label className="text-[12.5px] mb-1">Tanggal</Label><Input type="date" value={form.bottling_date} onChange={e => setForm({ ...form, bottling_date: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Operator *</Label><Input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Sisa Bulk (ml)</Label><Input type="number" value={form.remaining_bulk} onChange={e => setForm({ ...form, remaining_bulk: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Sisa Bulk (ml)</Label><NumberInput value={form.remaining_bulk} onChange={v => setForm({ ...form, remaining_bulk: v })} allowDecimal min={0} maxDecimals={2} className="h-9 text-[13px]" /></div>
         </div>
 
         {selectedBatch && (
@@ -161,8 +162,8 @@ export default function Bottling() {
                   <SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder="Pilih produk" /></SelectTrigger>
                   <SelectContent>{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                 </Select>
-                <Input type="number" placeholder="Jumlah" value={o.bottle_count} onChange={e => updateOutput(idx, 'bottle_count', e.target.value)} className="h-8 text-[12px]" />
-                <Input type="number" placeholder="ml/botol" value={o.volume_per_bottle} onChange={e => updateOutput(idx, 'volume_per_bottle', e.target.value)} className="h-8 text-[12px]" />
+                <NumberInput placeholder="Jumlah" value={o.bottle_count} onChange={v => updateOutput(idx, 'bottle_count', v)} allowDecimal={false} min={0} className="h-8 text-[12px]" />
+                <NumberInput placeholder="ml/botol" value={o.volume_per_bottle} onChange={v => updateOutput(idx, 'volume_per_bottle', v)} allowDecimal min={0} maxDecimals={1} className="h-8 text-[12px]" />
                 <button type="button" onClick={() => removeOutput(idx)} className="p-1 hover:bg-red-50 rounded text-red-500"><X className="w-3.5 h-3.5" /></button>
               </div>
             ))}
