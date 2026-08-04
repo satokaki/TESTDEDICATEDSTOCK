@@ -43,6 +43,10 @@ export const AuthProvider = ({ children }) => {
         if (appParams.token) {
           await checkUserAuth();
         } else {
+          // No access token → app requires login. Force redirect to the login
+          // page so the role/permission flow actually runs instead of rendering
+          // an anonymous (empty sidebar) shell.
+          setAuthError({ type: 'auth_required', message: 'Authentication required' });
           setIsLoadingAuth(false);
           setIsAuthenticated(false);
           setAuthChecked(true);
