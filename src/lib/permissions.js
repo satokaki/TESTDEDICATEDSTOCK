@@ -22,7 +22,7 @@ export const MENU_CATALOG = [
   { key: 'report_receivables', label: 'Laporan Piutang', group: 'laporan', actions: ['view'] },
   { key: 'traceability', label: 'Traceability Batch', group: 'laporan', actions: ['view'] },
   { key: 'master', label: 'Master Data', group: 'master', actions: ['view', 'create', 'edit', 'delete'] },
-  { key: 'users', label: 'Manajemen Pengguna', group: 'sistem', actions: ['view', 'create', 'edit'] },
+  { key: 'users', label: 'Manajemen Pengguna', group: 'sistem', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'settings', label: 'Pengaturan', group: 'sistem', actions: ['view'] },
 ];
 
@@ -44,7 +44,7 @@ const OPERATOR_DEFAULTS = {
   report_receivables: { view: true },
   traceability: { view: true },
   master: { view: true, create: true, edit: true, delete: false },
-  users: { view: false, create: false, edit: false },
+  users: { view: false, create: false, edit: false, delete: false },
   settings: { view: false },
 };
 

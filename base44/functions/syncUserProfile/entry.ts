@@ -18,7 +18,7 @@ const MENU_CATALOG = [
   { key: 'report_receivables', actions: ['view'] },
   { key: 'traceability', actions: ['view'] },
   { key: 'master', actions: ['view', 'create', 'edit', 'delete'] },
-  { key: 'users', actions: ['view', 'create', 'edit'] },
+  { key: 'users', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'settings', actions: ['view'] },
 ];
 
@@ -39,7 +39,7 @@ const OPERATOR_DEFAULTS = {
   report_receivables: { view: true },
   traceability: { view: true },
   master: { view: true, create: true, edit: true, delete: false },
-  users: { view: false, create: false, edit: false },
+  users: { view: false, create: false, edit: false, delete: false },
   settings: { view: false },
 };
 
@@ -56,12 +56,28 @@ function defaultPermissions(role) {
   return base;
 }
 
+function normalizeEmail(e) {
+  return (e || '').trim().toLowerCase();
+}
+
+async function genUserCode(base44) {
+  try {
+    const r = await base44.functions.invoke('generateDocumentCode', { doc_type: 'user' });
+    const d = r && r.data ? r.data : r;
+    return (d && d.code) || '';
+  } catch { return ''; }
+}
+
 /**
- * Idempotent user profile sync.
- * Called by the frontend after login. Ensures the app User record has a role,
- * status, permissions matrix, and user_code — filling defaults from a pending
- * invitation when present. Returns a complete profile so the frontend never
- * renders an empty sidebar / placeholder header due to missing fields.
+ * Idempotent sync of the authenticated user into the application profile.
+ * Handles two cases:
+ *  1. User has a User entity record (id == auth id) — fill missing defaults.
+ *  2. User has NO User entity record (platform did not create one) — build the
+ *     profile from the UserInvitation, link auth_user_id, generate user_code,
+ *     mark the invitation accepted, and cancel duplicate invitations.
+ * Always returns a complete profile (role, status, permissions, full_name,
+ * user_code, last_login_at) so the frontend never renders an empty sidebar or
+ * placeholder header.
  */
 export default async function(req) {
   try {
@@ -69,57 +85,96 @@ export default async function(req) {
     const authUser = await base44.auth.me();
     if (!authUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const email = (authUser.email || '').toLowerCase();
+    const email = normalizeEmail(authUser.email);
+    const authId = authUser.id;
+    const now = new Date().toISOString();
+    const sr = base44.asServiceRole;
 
-    // Pending invitation (service role — UserInvitation is admin-only via RLS)
-    let invitation = null;
+    // 1. Look for an application User record (id == auth id).
+    let appUser = null;
     try {
-      const invs = await base44.asServiceRole.entities.UserInvitation.filter({ email, status: 'pending' });
-      invitation = invs && invs[0] ? invs[0] : null;
-    } catch { invitation = null; }
+      appUser = await sr.entities.User.get(authId);
+    } catch { appUser = null; }
 
-    const role = authUser.role || (invitation && invitation.role) || 'user';
-    const status = authUser.status || 'active';
-    const hasPerms = authUser.permissions && typeof authUser.permissions === 'object' && Object.keys(authUser.permissions).length > 0;
-    const permissions = hasPerms ? authUser.permissions : defaultPermissions(role);
-    const fullName = authUser.full_name || (invitation && invitation.full_name) || '';
+    // 2. Look for invitations by email.
+    let invs = [];
+    try {
+      invs = await sr.entities.UserInvitation.filter({ email });
+    } catch { invs = []; }
+    const acceptedInvs = invs.filter((i) => i.status === 'accepted');
+    const pendingInvs = invs
+      .filter((i) => i.status === 'pending')
+      .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
 
-    // Persist missing custom fields (best-effort via service role)
-    const updates = {};
-    if (!authUser.role) updates.role = role;
-    if (!authUser.status) updates.status = status;
-    if (!hasPerms) updates.permissions = permissions;
-    if (!authUser.user_code) {
-      try {
-        const r = await base44.functions.invoke('generateDocumentCode', { doc_type: 'user' });
-        const d = r && r.data ? r.data : r;
-        if (d && d.code) updates.user_code = d.code;
-      } catch { /* ignore — code generated later */ }
+    // 3. Resolve role / full_name / permissions / user_code.
+    const invForProfile = acceptedInvs[0] || pendingInvs[0] || null;
+    const role = (appUser && appUser.role) || (invForProfile && invForProfile.role) || 'user';
+    const status = (appUser && appUser.status) || 'active';
+    const hasPerms = appUser && appUser.permissions && typeof appUser.permissions === 'object' && Object.keys(appUser.permissions).length > 0;
+    const permissions = hasPerms ? appUser.permissions : defaultPermissions(role);
+    const fullName =
+      (appUser && appUser.full_name) ||
+      (invForProfile && invForProfile.full_name) ||
+      authUser.full_name ||
+      (email ? email.split('@')[0] : 'Pengguna');
+    let userCode = (appUser && appUser.user_code) || (invForProfile && invForProfile.user_code) || '';
+
+    // 4. If a User record exists, fill any missing custom fields + last_login_at.
+    if (appUser) {
+      const upd = {};
+      if (!appUser.role) upd.role = role;
+      if (!appUser.status) upd.status = status;
+      if (!hasPerms) upd.permissions = permissions;
+      if (!appUser.user_code) {
+        const c = userCode || (await genUserCode(base44));
+        if (c) { upd.user_code = c; userCode = c; }
+      }
+      upd.last_login_at = now;
+      if (Object.keys(upd).length > 0) {
+        try { await sr.entities.User.update(authId, upd); } catch { /* best-effort */ }
+      }
     }
-    if (Object.keys(updates).length > 0) {
-      try { await base44.asServiceRole.entities.User.update(authUser.id, updates); } catch { /* best-effort */ }
-    }
 
-    // Mark invitation accepted on first login
-    if (invitation) {
+    // 5. Reconcile invitations: mark the latest pending accepted, cancel duplicates.
+    if (pendingInvs.length > 0) {
+      const primary = pendingInvs[0];
+      const code = userCode || primary.user_code || (await genUserCode(base44));
+      if (code) userCode = code;
       try {
-        await base44.asServiceRole.entities.UserInvitation.update(invitation.id, {
+        await sr.entities.UserInvitation.update(primary.id, {
           status: 'accepted',
-          accepted_at: new Date().toISOString(),
+          accepted_at: now,
+          auth_user_id: authId,
+          user_code: code,
+          last_login_at: now,
         });
       } catch { /* ignore */ }
+      for (const dup of pendingInvs.slice(1)) {
+        try { await sr.entities.UserInvitation.update(dup.id, { status: 'cancelled' }); } catch { /* ignore */ }
+      }
+    } else if (acceptedInvs.length > 0) {
+      // Already accepted — ensure auth_user_id linked + last_login_at fresh.
+      const acc = acceptedInvs[0];
+      const upd = { last_login_at: now };
+      if (!acc.auth_user_id) upd.auth_user_id = authId;
+      if (!acc.user_code && userCode) upd.user_code = userCode;
+      try { await sr.entities.UserInvitation.update(acc.id, upd); } catch { /* ignore */ }
+      // Cancel any stray duplicates.
+      for (const dup of acceptedInvs.slice(1)) {
+        try { await sr.entities.UserInvitation.update(dup.id, { status: 'cancelled' }); } catch { /* ignore */ }
+      }
     }
 
     return Response.json({
-      id: authUser.id,
+      id: authId,
       full_name: fullName,
       email: authUser.email,
       role,
       status,
       permissions,
-      user_code: updates.user_code || authUser.user_code || '',
+      user_code: userCode,
+      last_login_at: now,
       role_assigned: !!role,
-      invitation_status: invitation ? 'accepted' : null,
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

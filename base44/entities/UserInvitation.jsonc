@@ -4,7 +4,7 @@
   "properties": {
     "email": {
       "type": "string",
-      "description": "Email undangan (lowercase)"
+      "description": "Email undangan (lowercase, normalized)"
     },
     "full_name": {
       "type": "string",
@@ -17,7 +17,7 @@
         "user"
       ],
       "default": "user",
-      "description": "Role yang akan diberikan saat login pertama"
+      "description": "Role yang diberikan saat login pertama"
     },
     "status": {
       "type": "string",
@@ -36,6 +36,19 @@
     "accepted_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "user_code": {
+      "type": "string",
+      "description": "Kode user auto-generated saat diterima"
+    },
+    "auth_user_id": {
+      "type": "string",
+      "description": "ID auth user, terhubung saat login pertama"
+    },
+    "last_login_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Waktu login terakhir (untuk user tanpa record User)"
     }
   },
   "required": [
