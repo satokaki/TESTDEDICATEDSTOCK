@@ -142,7 +142,8 @@ export default async function(req) {
     const role = (appUser && appUser.role) || (invForProfile && invForProfile.role) || 'user';
     const status = (appUser && appUser.status) || 'active';
     const hasPerms = appUser && appUser.permissions && typeof appUser.permissions === 'object' && Object.keys(appUser.permissions).length > 0;
-    const permissions = hasPerms ? appUser.permissions : defaultPermissions(role);
+    const invPerms = invForProfile && invForProfile.permissions && typeof invForProfile.permissions === 'object' && Object.keys(invForProfile.permissions).length > 0 ? invForProfile.permissions : null;
+    const permissions = hasPerms ? appUser.permissions : (invPerms || defaultPermissions(role));
     const fullName =
       (appUser && appUser.full_name) ||
       (invForProfile && invForProfile.full_name) ||

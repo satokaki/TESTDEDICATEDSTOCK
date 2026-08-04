@@ -29,6 +29,10 @@
       "default": "pending",
       "description": "Status undangan"
     },
+    "permissions": {
+      "type": "object",
+      "description": "Hak akses per menu (untuk user tanpa record User)"
+    },
     "invited_by": {
       "type": "string",
       "description": "Nama/email admin pengundang"

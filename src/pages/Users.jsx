@@ -167,7 +167,7 @@ export default function Users() {
     setEditForm({
       role: item.role || 'user',
       status: item.status === 'pending_invitation' ? 'active' : (item.status || 'active'),
-      permissions: normalizePermissions(item.permissions),
+      permissions: normalizePermissions(item.permissions || getDefaultPermissions(item.role || 'user')),
     });
     setEditOpen(true);
   };
@@ -189,9 +189,17 @@ export default function Users() {
     try {
       const payload = {
         role: editForm.role,
-        status: editForm.status,
         permissions: normalizePermissions(editForm.permissions),
       };
+      if (editing.kind === 'invitation') {
+        // User belum punya record User — simpan role & permissions di undangan.
+        await base44.entities.UserInvitation.update(editing.id, payload);
+        toast({ title: 'Pengguna diperbarui' });
+        setEditOpen(false);
+        loadData();
+        return;
+      }
+      payload.status = editForm.status;
       if (!editing.user_code) {
         try { payload.user_code = await generateUserCode(); } catch { /* ignore */ }
       }
@@ -247,9 +255,9 @@ export default function Users() {
         <div className="flex items-center gap-1">
           <button
             onClick={() => openEdit(row)}
-            disabled={row.kind === 'invitation' || row.id === currentUser?.id}
+            disabled={row.kind === 'user' && row.id === currentUser?.id}
             className="p-1.5 hover:bg-muted rounded disabled:opacity-30"
-            title={row.kind === 'invitation' ? 'User belum memiliki record (diundang)' : row.id === currentUser?.id ? 'Tidak bisa edit diri sendiri dari sini' : 'Edit'}
+            title={row.kind === 'invitation' ? 'Edit undangan (role/akses)' : row.id === currentUser?.id ? 'Tidak bisa edit diri sendiri dari sini' : 'Edit'}
           >
             <Pencil className="w-3.5 h-3.5" />
           </button>

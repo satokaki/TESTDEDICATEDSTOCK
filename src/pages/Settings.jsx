@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Shield, User, Save } from 'lucide-react';
+import { getDefaultPermissions } from '@/lib/permissions';
 
 const menus = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -36,8 +37,27 @@ export default function Settings() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const items = await base44.entities.User.list();
-      setUsers(items);
+      const [userItems, invs] = await Promise.all([
+        base44.entities.User.list(),
+        base44.entities.UserInvitation.list().catch(() => []),
+      ]);
+      const rows = userItems.map((u) => ({ ...u, kind: 'user' }));
+      const usedEmails = new Set(rows.map((r) => (r.email || '').toLowerCase()));
+      const seenInv = new Set();
+      const invRows = invs
+        .filter((i) => i.status !== 'cancelled')
+        .filter((i) => {
+          const e = (i.email || '').toLowerCase();
+          if (usedEmails.has(e) || seenInv.has(e)) return false;
+          seenInv.add(e);
+          return true;
+        })
+        .map((i) => ({
+          id: i.id, kind: 'invitation',
+          full_name: i.full_name || '', email: i.email,
+          role: i.role, status: 'active', permissions: i.permissions || {},
+        }));
+      setUsers([...rows, ...invRows]);
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
     finally { setLoading(false); }
   }, [toast]);
@@ -46,7 +66,8 @@ export default function Settings() {
 
   const selectUser = (user) => {
     setSelectedUser(user);
-    const perms = user.permissions || {};
+    const src = user.permissions && Object.keys(user.permissions).length > 0 ? user.permissions : getDefaultPermissions(user.role || 'user');
+    const perms = src;
     const matrix = {};
     menus.forEach(m => {
       matrix[m.key] = {};
@@ -83,12 +104,16 @@ export default function Settings() {
         cleanPerms[m.key] = {};
         actions.forEach(a => cleanPerms[m.key][a] = permissions[m.key]?.[a] || false);
       });
-      await base44.auth.updateMe({ permissions: cleanPerms }).catch(() => {});
-      // Update user permissions via admin (if current user is admin)
-      try {
-        await base44.entities.User.update(selectedUser.id, { permissions: cleanPerms });
-      } catch {
-        // Fallback: updateMe only
+      if (selectedUser.kind === 'invitation') {
+        // User belum punya record User — simpan permissions di undangan.
+        await base44.entities.UserInvitation.update(selectedUser.id, { permissions: cleanPerms });
+      } else {
+        await base44.auth.updateMe({ permissions: cleanPerms }).catch(() => {});
+        try {
+          await base44.entities.User.update(selectedUser.id, { permissions: cleanPerms });
+        } catch {
+          // Fallback: updateMe only
+        }
       }
       toast({ title: 'Permission disimpan', description: `Hak akses ${selectedUser.email} diperbarui` });
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
