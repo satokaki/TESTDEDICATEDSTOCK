@@ -31,6 +31,10 @@ export function calculateRecipe({
   nicotineBasePG = 100,
   nicotineBaseVG = 0,
 }) {
+  // Normalize: percentage may be a raw string ('') while the user is typing in
+  // NumberInput. Coerce to a number so arithmetic and .toFixed never throw and
+  // crash the page (blank white screen).
+  ingredients = (ingredients || []).map(i => ({ ...i, percentage: Number(i.percentage) || 0 }));
   const items = [];
   let totalFlavorPercent = 0;
   let totalPercent = 0;
