@@ -20,6 +20,8 @@ export const generateCategoryCode = () => gen('category');
 export const generateSupplierCode = () => gen('supplier');
 export const generateWarehouseCode = () => gen('warehouse');
 export const generateMaterialCode = () => gen('material');
+export const generatePremixMaterialCode = (short_name, concentration) => gen('premix_material', { short_name, concentration });
+export const generatePremixBatchCode = (short_name, concentration) => gen('premix_batch', { short_name, concentration });
 export const generateRecipeCode = () => gen('recipe');
 export const generateProductCode = (category_code) => gen('product', { category_code });
 export const generateCustomerCode = () => gen('customer');

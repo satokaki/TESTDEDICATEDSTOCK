@@ -21,6 +21,8 @@ const FORMATS = {
   supplier:   { key: () => `SUPPLIER-${nowYear()}`, prefix: 'SPL', build: (p, n) => `SPL-${pad(n, PADDING)}` },
   warehouse:  { key: () => `WAREHOUSE-${nowYear()}`, prefix: 'GUD', build: (p, n) => `GUD-${pad(n, PADDING)}` },
   material:   { key: () => `MATERIAL-${nowYear()}`, prefix: 'BHN', build: (p, n) => `BHN-${pad(n, PADDING)}` },
+  premix_material: { key: (p) => `PREMIX-MAT-${(p.short_name||'XX').substring(0,4).toUpperCase()}-${(p.concentration||0)}-${nowYear()}`, prefix: 'PMX', build: (p, n) => `PMX-${(p.short_name||'XX').substring(0,4).toUpperCase()}-${(p.concentration||0)}-${pad(n, PADDING)}` },
+  premix_batch:    { key: (p) => `PREMIX-BATCH-${(p.short_name||'XX').substring(0,3).toUpperCase()}${(p.concentration||0)}-${nowYMD()}`, prefix: 'PMXB', build: (p, n) => `PMX-${(p.short_name||'XX').substring(0,3).toUpperCase()}${(p.concentration||0)}-${nowYMD()}-${pad(n, PADDING_3)}` },
   recipe:     { key: () => `RECIPE-${nowYear()}`, prefix: 'RCP', build: (p, n) => `RCP-${pad(n, PADDING)}` },
   product:    { key: (p) => `PRODUCT-${(p.category_code || 'XX').substring(0, 3).toUpperCase()}`, prefix: 'BRG', build: (p, n) => `BRG-${(p.category_code || 'XX').substring(0, 3).toUpperCase()}-${pad(n, PADDING)}` },
   customer:   { key: () => `CUSTOMER-${nowYear()}`, prefix: 'CUS', build: (p, n) => `CUS-${nowYear()}-${pad(n, PADDING)}` },

@@ -29,7 +29,11 @@
         "production_reversal",
         "sales_reversal",
         "stock_adjustment",
-        "transfer_gudang"
+        "transfer_gudang",
+        "premix_consumption",
+        "premix_output",
+        "premix_waste",
+        "premix_reversal"
       ],
       "description": "Tipe transaksi"
     },

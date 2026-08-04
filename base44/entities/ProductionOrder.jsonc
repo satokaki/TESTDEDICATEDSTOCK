@@ -10,6 +10,15 @@
       "type": "string",
       "description": "Nomor batch (auto: BATCH-MMM-YYYYMMDD-001), unik"
     },
+    "production_type": {
+      "type": "string",
+      "enum": [
+        "PREMIX",
+        "FINISHED_PRODUCT"
+      ],
+      "default": "FINISHED_PRODUCT",
+      "description": "Mode produksi: PREMIX atau FINISHED_PRODUCT"
+    },
     "production_date": {
       "type": "string",
       "format": "date"
@@ -23,6 +32,23 @@
     "recipe_version": {
       "type": "integer"
     },
+    "recipe_type": {
+      "type": "string",
+      "enum": [
+        "PREMIX",
+        "FINISHED_PRODUCT"
+      ],
+      "description": "Snapshot tipe resep"
+    },
+    "calculation_basis": {
+      "type": "string",
+      "enum": [
+        "W_W",
+        "W_V",
+        "V_V"
+      ],
+      "description": "Basis perhitungan (premix)"
+    },
     "product_id": {
       "type": "string"
     },
@@ -35,9 +61,45 @@
     "brand_name": {
       "type": "string"
     },
+    "output_material_id": {
+      "type": "string",
+      "description": "Bahan premix output (premix production)"
+    },
+    "output_material_name": {
+      "type": "string"
+    },
+    "output_batch_id": {
+      "type": "string",
+      "description": "ID PremixBatch hasil"
+    },
+    "output_batch_code": {
+      "type": "string"
+    },
     "target_volume": {
       "type": "number",
-      "description": "Target volume (ml)"
+      "description": "Target volume (ml) \u2014 finished product"
+    },
+    "target_quantity": {
+      "type": "number",
+      "description": "Target quantity premix (gram/ml)"
+    },
+    "target_unit": {
+      "type": "string",
+      "enum": [
+        "gram",
+        "mililiter"
+      ]
+    },
+    "actual_output_quantity": {
+      "type": "number",
+      "description": "Output aktual premix"
+    },
+    "waste_quantity": {
+      "type": "number",
+      "description": "Selisih/waste premix"
+    },
+    "waste_unit": {
+      "type": "string"
     },
     "actual_volume": {
       "type": "number",
@@ -72,7 +134,6 @@
   },
   "required": [
     "production_date",
-    "target_volume",
     "status"
   ]
 }

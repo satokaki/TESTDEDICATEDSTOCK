@@ -10,6 +10,32 @@
       "type": "string",
       "description": "Nama resep"
     },
+    "recipe_type": {
+      "type": "string",
+      "enum": [
+        "PREMIX",
+        "FINISHED_PRODUCT"
+      ],
+      "default": "FINISHED_PRODUCT",
+      "description": "PREMIX menghasilkan bahan baru; FINISHED_PRODUCT menghasilkan produk akhir"
+    },
+    "output_material_id": {
+      "type": "string",
+      "description": "Bahan premix yang dihasilkan (wajib untuk recipe_type=PREMIX)"
+    },
+    "output_material_name": {
+      "type": "string"
+    },
+    "calculation_basis": {
+      "type": "string",
+      "enum": [
+        "W_W",
+        "W_V",
+        "V_V"
+      ],
+      "default": "W_W",
+      "description": "Basis perhitungan: W_W (gram/total gram), W_V (gram/total volume), V_V (ml/total ml)"
+    },
     "brand_id": {
       "type": "string"
     },
@@ -18,7 +44,7 @@
     },
     "product_id": {
       "type": "string",
-      "description": "Produk terkait"
+      "description": "Produk terkait (untuk FINISHED_PRODUCT)"
     },
     "product_name": {
       "type": "string"
@@ -35,6 +61,17 @@
     "target_volume": {
       "type": "number",
       "description": "Target volume standar (ml)"
+    },
+    "target_quantity": {
+      "type": "number",
+      "description": "Target quantity premix (gram/ml) untuk PREMIX"
+    },
+    "target_unit": {
+      "type": "string",
+      "enum": [
+        "gram",
+        "mililiter"
+      ]
     },
     "target_nicotine": {
       "type": "number",
