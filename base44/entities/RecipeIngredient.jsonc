@@ -1,0 +1,63 @@
+{
+  "name": "RecipeIngredient",
+  "type": "object",
+  "properties": {
+    "recipe_id": {
+      "type": "string",
+      "description": "ID resep"
+    },
+    "material_id": {
+      "type": "string",
+      "description": "ID bahan"
+    },
+    "material_name": {
+      "type": "string"
+    },
+    "material_type": {
+      "type": "string",
+      "enum": [
+        "flavor",
+        "propylene_glycol",
+        "vegetable_glycerin",
+        "nicotine",
+        "sweetener",
+        "cooling",
+        "additive",
+        "lainnya"
+      ],
+      "description": "Jenis bahan"
+    },
+    "percentage": {
+      "type": "number",
+      "description": "Persentase (%)"
+    },
+    "density": {
+      "type": "number",
+      "description": "Density bahan"
+    },
+    "pg_content": {
+      "type": "number",
+      "description": "Kandungan PG (%)"
+    },
+    "vg_content": {
+      "type": "number",
+      "description": "Kandungan VG (%)"
+    },
+    "nicotine_strength": {
+      "type": "number",
+      "description": "Kekuatan nicotine (mg/ml)"
+    },
+    "mix_order": {
+      "type": "integer",
+      "description": "Urutan pencampuran"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "recipe_id",
+    "material_id",
+    "percentage"
+  ]
+}

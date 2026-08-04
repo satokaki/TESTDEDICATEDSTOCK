@@ -1,0 +1,87 @@
+{
+  "name": "Material",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "Kode bahan, unik"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nama bahan"
+    },
+    "category_id": {
+      "type": "string",
+      "description": "ID kategori bahan"
+    },
+    "category_name": {
+      "type": "string"
+    },
+    "supplier_id": {
+      "type": "string",
+      "description": "ID supplier utama"
+    },
+    "supplier_name": {
+      "type": "string"
+    },
+    "material_category": {
+      "type": "string",
+      "enum": [
+        "flavor",
+        "propylene_glycol",
+        "vegetable_glycerin",
+        "nicotine",
+        "sweetener",
+        "cooling",
+        "additive",
+        "lainnya"
+      ],
+      "description": "Jenis bahan"
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "gram",
+        "mililiter",
+        "unit"
+      ],
+      "default": "gram"
+    },
+    "density": {
+      "type": "number",
+      "description": "Density gram per ml"
+    },
+    "pg_content": {
+      "type": "number",
+      "description": "Kandungan PG (%)"
+    },
+    "vg_content": {
+      "type": "number",
+      "description": "Kandungan VG (%)"
+    },
+    "nicotine_strength": {
+      "type": "number",
+      "description": "Kekuatan nicotine (mg/ml) jika bahan nicotine base"
+    },
+    "min_stock": {
+      "type": "number",
+      "default": 0
+    },
+    "last_purchase_price": {
+      "type": "number",
+      "default": 0
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "name",
+    "unit"
+  ]
+}

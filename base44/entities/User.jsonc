@@ -1,0 +1,18 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "user"
+      ],
+      "default": "user"
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Hak akses kustom per menu/aksi (JSON)"
+    }
+  }
+}

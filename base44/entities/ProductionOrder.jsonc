@@ -1,0 +1,78 @@
+{
+  "name": "ProductionOrder",
+  "type": "object",
+  "properties": {
+    "production_number": {
+      "type": "string",
+      "description": "Nomor produksi (auto: PRD-YYYYMM-00001), unik"
+    },
+    "batch_number": {
+      "type": "string",
+      "description": "Nomor batch (auto: BATCH-MMM-YYYYMMDD-001), unik"
+    },
+    "production_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "recipe_id": {
+      "type": "string"
+    },
+    "recipe_code": {
+      "type": "string"
+    },
+    "recipe_version": {
+      "type": "integer"
+    },
+    "product_id": {
+      "type": "string"
+    },
+    "product_name": {
+      "type": "string"
+    },
+    "brand_id": {
+      "type": "string"
+    },
+    "brand_name": {
+      "type": "string"
+    },
+    "target_volume": {
+      "type": "number",
+      "description": "Target volume (ml)"
+    },
+    "actual_volume": {
+      "type": "number",
+      "description": "Volume aktual (ml)"
+    },
+    "operator": {
+      "type": "string"
+    },
+    "approver": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "menunggu_bahan",
+        "siap_produksi",
+        "sedang_diproses",
+        "selesai_mixing",
+        "siap_bottling",
+        "dibatalkan"
+      ],
+      "default": "draft"
+    },
+    "recipe_snapshot": {
+      "type": "string",
+      "description": "JSON snapshot resep saat produksi"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "production_date",
+    "target_volume",
+    "status"
+  ]
+}

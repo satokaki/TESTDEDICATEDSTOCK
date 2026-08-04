@@ -6,7 +6,27 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
-// Add page imports here
+import Layout from '@/components/Layout';
+import Dashboard from '@/pages/Dashboard';
+import Recipes from '@/pages/Recipes';
+import Production from '@/pages/Production';
+import Bottling from '@/pages/Bottling';
+import Labeling from '@/pages/Labeling';
+import Excise from '@/pages/Excise';
+import Sales from '@/pages/Sales';
+import Payments from '@/pages/Payments';
+import StockCard from '@/pages/StockCard';
+import SalesReport from '@/pages/SalesReport';
+import ReceivablesReport from '@/pages/ReceivablesReport';
+import BatchTraceability from '@/pages/BatchTraceability';
+import Settings from '@/pages/Settings';
+import Brands from '@/pages/Brands';
+import Categories from '@/pages/Categories';
+import Suppliers from '@/pages/Suppliers';
+import Customers from '@/pages/Customers';
+import Materials from '@/pages/Materials';
+import Products from '@/pages/Products';
+import Warehouses from '@/pages/Warehouses';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -34,7 +54,28 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      {/* Add your page Route elements here */}
+      <Route element={<Layout />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/recipes" element={<Recipes />} />
+        <Route path="/production" element={<Production />} />
+        <Route path="/bottling" element={<Bottling />} />
+        <Route path="/labeling" element={<Labeling />} />
+        <Route path="/excise" element={<Excise />} />
+        <Route path="/sales" element={<Sales />} />
+        <Route path="/payments" element={<Payments />} />
+        <Route path="/stock-card" element={<StockCard />} />
+        <Route path="/reports/sales" element={<SalesReport />} />
+        <Route path="/reports/receivables" element={<ReceivablesReport />} />
+        <Route path="/traceability" element={<BatchTraceability />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/master/brands" element={<Brands />} />
+        <Route path="/master/categories" element={<Categories />} />
+        <Route path="/master/suppliers" element={<Suppliers />} />
+        <Route path="/master/customers" element={<Customers />} />
+        <Route path="/master/materials" element={<Materials />} />
+        <Route path="/master/products" element={<Products />} />
+        <Route path="/master/warehouses" element={<Warehouses />} />
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
