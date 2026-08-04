@@ -24,15 +24,22 @@ export default function Users() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: '', role: 'user' });
+  const [inviteForm, setInviteForm] = useState({ email: '', full_name: '', role: 'user' });
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({ role: 'user', status: 'active', permissions: {} });
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const items = await base44.entities.User.list('-created_date', 200);
-      setData(items);
+      const [users, invs] = await Promise.all([
+        base44.entities.User.list('-created_date', 200),
+        base44.entities.UserInvitation.list('-created_date', 200).catch(() => []),
+      ]);
+      const usedEmails = new Set(users.map((u) => (u.email || '').toLowerCase()));
+      const pendingRows = invs
+        .filter((i) => i.status === 'pending' && !usedEmails.has((i.email || '').toLowerCase()))
+        .map((i) => ({ id: i.id, kind: 'invitation', full_name: i.full_name || '', email: i.email, role: i.role, status: 'pending_invitation' }));
+      setData([...users.map((u) => ({ ...u, kind: 'user' })), ...pendingRows]);
     } catch {
       toast({ variant: 'destructive', title: 'Gagal memuat data pengguna' });
     } finally {
@@ -42,14 +49,21 @@ export default function Users() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const openInvite = () => { setInviteForm({ email: '', role: 'user' }); setInviteOpen(true); };
+  const openInvite = () => { setInviteForm({ email: '', full_name: '', role: 'user' }); setInviteOpen(true); };
 
   const handleInvite = async () => {
-    if (!inviteForm.email) { toast({ variant: 'destructive', title: 'Email wajib diisi' }); return; }
+    if (!inviteForm.email || !inviteForm.full_name) { toast({ variant: 'destructive', title: 'Nama dan email wajib diisi' }); return; }
     setSubmitting(true);
     try {
+      await base44.entities.UserInvitation.create({
+        email: inviteForm.email.toLowerCase(),
+        full_name: inviteForm.full_name,
+        role: inviteForm.role,
+        status: 'pending',
+        invited_by: currentUser?.full_name || currentUser?.email || '',
+      });
       await base44.users.inviteUser(inviteForm.email, inviteForm.role);
-      toast({ title: 'Undangan terkirim', description: inviteForm.email });
+      toast({ title: 'Undangan terkirim', description: `${inviteForm.full_name} · ${inviteForm.email}` });
       setInviteOpen(false);
       loadData();
     } catch (e) {
@@ -116,7 +130,9 @@ export default function Users() {
     },
     {
       key: 'status', header: 'Status',
-      render: (row) => row.status === 'suspended'
+      render: (row) => row.status === 'pending_invitation'
+        ? <span className="text-[11px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold">Menunggu Login</span>
+        : row.status === 'suspended'
         ? <span className="text-[11px] px-2 py-0.5 bg-red-100 text-red-700 rounded font-semibold">Suspended</span>
         : <span className="text-[11px] px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded font-semibold">Aktif</span>,
     },
@@ -126,9 +142,9 @@ export default function Users() {
         <div className="flex items-center gap-1">
           <button
             onClick={() => openEdit(row)}
-            disabled={row.id === currentUser?.id}
+            disabled={row.id === currentUser?.id || row.kind === 'invitation'}
             className="p-1.5 hover:bg-muted rounded disabled:opacity-30"
-            title={row.id === currentUser?.id ? 'Tidak bisa edit diri sendiri dari sini' : 'Edit'}
+            title={row.kind === 'invitation' ? 'Menunggu user login pertama kali' : row.id === currentUser?.id ? 'Tidak bisa edit diri sendiri dari sini' : 'Edit'}
           >
             <Pencil className="w-3.5 h-3.5" />
           </button>
@@ -159,6 +175,10 @@ export default function Users() {
           Pengguna akan menerima email undangan untuk bergabung ke aplikasi ini.
         </div>
         <div className="space-y-3">
+          <div>
+            <Label className="text-[12.5px] mb-1">Nama Lengkap *</Label>
+            <Input value={inviteForm.full_name} onChange={(e) => setInviteForm({ ...inviteForm, full_name: e.target.value })} className="h-9 text-[13px]" placeholder="Operator Lab" />
+          </div>
           <div>
             <Label className="text-[12.5px] mb-1">Email *</Label>
             <Input type="email" value={inviteForm.email} onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })} className="h-9 text-[13px]" placeholder="nama@perusahaan.com" />

@@ -77,7 +77,9 @@ export default function Layout() {
     );
   };
 
+  const displayName = user?.full_name || (user?.email ? user.email.split('@')[0] : 'Pengguna');
   const initial = (user?.full_name || user?.email || 'A').charAt(0).toUpperCase();
+  const hasRole = !!user?.role;
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
@@ -213,8 +215,8 @@ export default function Layout() {
 
           <div className="flex items-center gap-2.5 pl-3 border-l border-border">
             <div className="text-right hidden sm:block">
-              <div className="text-[12.5px] font-semibold leading-none">{user?.full_name || 'Pengguna'}</div>
-              <div className="text-[10.5px] text-muted-foreground mt-0.5">{roleLabel(user?.role)}</div>
+              <div className="text-[12.5px] font-semibold leading-none">{displayName}</div>
+              <div className={`text-[10.5px] mt-0.5 ${hasRole ? 'text-muted-foreground' : 'text-amber-600 font-medium'}`}>{hasRole ? roleLabel(user?.role) : 'Belum Ada Role'}</div>
             </div>
             <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[12px] font-bold">{initial}</div>
             <button onClick={handleLogout} className="p-2 hover:bg-muted rounded-md" title="Logout">
@@ -225,6 +227,12 @@ export default function Layout() {
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto">
+          {user && !hasRole && (
+            <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-[12px] text-amber-800 flex items-center justify-between">
+              <span>Akun Anda belum memiliki role. Hubungi Administrator.</span>
+              <button onClick={handleLogout} className="text-amber-800 underline font-medium">Logout</button>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

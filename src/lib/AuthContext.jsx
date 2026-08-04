@@ -2,6 +2,7 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
+import { fetchProfile } from '@/lib/userSync';
 
 const AuthContext = createContext();
 
@@ -91,11 +92,17 @@ export const AuthProvider = ({ children }) => {
 
   const checkUserAuth = async () => {
     try {
-      // Now check if the user is authenticated
+      // Fetch + sync complete profile (role, permissions, status) server-side.
+      // isLoadingAuth stays true during sync so the app shows a loader instead of
+      // an empty sidebar / placeholder header.
       setIsLoadingAuth(true);
-      const currentUser = await base44.auth.me();
-      setUser(currentUser);
-      setIsAuthenticated(true);
+      const profile = await fetchProfile();
+      if (profile) {
+        setUser(profile);
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
       setIsLoadingAuth(false);
       setAuthChecked(true);
     } catch (error) {
