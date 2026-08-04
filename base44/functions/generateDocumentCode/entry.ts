@@ -111,7 +111,7 @@ export default async function(req) {
           { sequence_key: sequenceKey, last_number: current },
           { $set: { last_number: next } }
         );
-        if (res && res.modifiedCount > 0) {
+        if (res && (res.updated || res.modifiedCount) > 0) {
           number = next;
         }
         // else: someone else moved it; retry
