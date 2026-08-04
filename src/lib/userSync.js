@@ -39,8 +39,12 @@ export function ensureUserDefaults(user) {
  * Idempotent and safe to call on every login.
  */
 export async function fetchProfile() {
+  // Decode JWT lokal sekali — kirim emailnya ke syncUserProfile sebagai cadangan
+  // identitas bila header Authorization tidak diteruskan ke function.
+  const localJwt = decodeJwtToken(appParams.token);
+  const localEmail = localJwt && (localJwt.email || localJwt.user_email || (typeof localJwt.sub === 'string' && localJwt.sub.includes('@') ? localJwt.sub : ''));
   try {
-    const res = await base44.functions.invoke('syncUserProfile', {});
+    const res = await base44.functions.invoke('syncUserProfile', localEmail ? { email: localEmail } : {});
     const d = res && res.data ? res.data : res;
     if (d && d.id) return d;
   } catch (e) {
@@ -51,10 +55,11 @@ export async function fetchProfile() {
   if (me && me.id) return ensureUserDefaults(me);
   // Last-resort: decode the local JWT so an authenticated user never renders an
   // empty sidebar / "Belum Ada Role" when sync and me() both fail.
-  const jwt = decodeJwtToken(appParams.token);
+  const jwt = localJwt;
   if (jwt) {
     const id = jwt.sub || jwt.user_id || jwt.id;
-    const email = jwt.email || jwt.user_email || '';
+    // Base44 tokens menyimpan email di `sub`.
+    const email = jwt.email || jwt.user_email || (typeof jwt.sub === 'string' && jwt.sub.includes('@') ? jwt.sub : '');
     if (id) {
       return ensureUserDefaults({
         id,

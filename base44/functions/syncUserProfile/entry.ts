@@ -100,6 +100,11 @@ function decodeJwt(req) {
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
+    // Client mengirim email (didecode dari JWT lokal) sebagai cadangan identitas
+    // bila header Authorization tidak diteruskan ke function — agar user tanpa
+    // record User (Novi/Jerry) tetap teresolusi dan mendapat profile dari undangan.
+    let body = {};
+    try { body = await req.json(); } catch { body = {}; }
 
     // Primary identity: base44.auth.me() (returns the User entity record when one
     // exists). Fallback: decode the JWT so users WITHOUT a User entity record
@@ -114,9 +119,10 @@ export default async function(req) {
     // email / user_id field — so treat `sub` as the email whenever it looks like one.
     const jwtEmail = jwtEmailRaw || (typeof jwtSub === 'string' && jwtSub.includes('@') ? jwtSub : '');
     const jwtId = (typeof jwtSub === 'string' && jwtSub.includes('@')) ? null : jwtSub;
+    const payloadEmail = normalizeEmail((body && body.email) || '');
 
-    const authId = (authUser && authUser.id) || jwtId || jwtEmail || null;
-    const email = normalizeEmail((authUser && authUser.email) || jwtEmail || '');
+    const authId = (authUser && authUser.id) || jwtId || jwtEmail || payloadEmail || null;
+    const email = normalizeEmail((authUser && authUser.email) || jwtEmail || payloadEmail || '');
     if (!authId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const now = new Date().toISOString();
     const sr = base44.asServiceRole;
