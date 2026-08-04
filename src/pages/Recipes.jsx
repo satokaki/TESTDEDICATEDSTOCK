@@ -14,6 +14,17 @@ import { Plus, Pencil, Copy, CheckCircle, Trash2, Calculator, X } from 'lucide-r
 import { calculateRecipe } from '@/lib/recipeCalculator';
 import { createAuditLog } from '@/lib/stockUtils';
 import { generateRecipeCode } from '@/lib/sequence';
+import { validatePremixRecipe, buildPremixCompositionMap } from '@/lib/premix';
+
+const recipeTypes = [
+  { value: 'FINISHED_PRODUCT', label: 'Produk Jadi' },
+  { value: 'PREMIX', label: 'Premix' },
+];
+const calcBases = [
+  { value: 'W_W', label: 'W/W (gram/total gram)' },
+  { value: 'W_V', label: 'W/V (gram/total volume)' },
+  { value: 'V_V', label: 'V/V (ml/total ml)' },
+];
 
 export default function Recipes() {
   const { toast } = useToast();
@@ -28,6 +39,8 @@ export default function Recipes() {
   const [calcResult, setCalcResult] = useState(null);
   const [form, setForm] = useState({
     code: '', name: '', brand_id: '', product_id: '',
+    recipe_type: 'FINISHED_PRODUCT', output_material_id: '', calculation_basis: 'W_W',
+    target_quantity: 1000, target_unit: 'gram',
     target_volume: 1000, target_nicotine: 3, target_pg: 40, target_vg: 60,
     status: 'draft', notes: '',
     ingredients: [],
@@ -76,6 +89,8 @@ export default function Recipes() {
     setEditing(null);
     setForm({
       code: '', name: '', brand_id: '', product_id: '',
+      recipe_type: 'FINISHED_PRODUCT', output_material_id: '', calculation_basis: 'W_W',
+      target_quantity: 1000, target_unit: 'gram',
       target_volume: 1000, target_nicotine: 3, target_pg: 40, target_vg: 60,
       status: 'draft', notes: '', ingredients: [],
     });
@@ -88,10 +103,12 @@ export default function Recipes() {
     const ingredients = await base44.entities.RecipeIngredient.filter({ recipe_id: item.id });
     setForm({
       code: item.code, name: item.name, brand_id: item.brand_id || '', product_id: item.product_id || '',
+      recipe_type: item.recipe_type || 'FINISHED_PRODUCT', output_material_id: item.output_material_id || '', calculation_basis: item.calculation_basis || 'W_W',
+      target_quantity: item.target_quantity || 1000, target_unit: item.target_unit || 'gram',
       target_volume: item.target_volume || 1000, target_nicotine: item.target_nicotine || 3,
       target_pg: item.target_pg || 40, target_vg: item.target_vg || 60,
       status: item.status, notes: item.notes || '',
-      ingredients: ingredients.map(i => ({ id: i.id, material_id: i.material_id, material_name: i.material_name, material_type: i.material_type, percentage: i.percentage, density: i.density, pg_content: i.pg_content, vg_content: i.vg_content, nicotine_strength: i.nicotine_strength, mix_order: i.mix_order, notes: i.notes })),
+      ingredients: ingredients.map(i => ({ id: i.id, material_id: i.material_id, material_name: i.material_name, material_type: i.material_type, is_premix: i.is_premix || (i.material_type === 'premix'), percentage: i.percentage, density: i.density, pg_content: i.pg_content, vg_content: i.vg_content, nicotine_strength: i.nicotine_strength, concentration_value: i.concentration_value, mix_order: i.mix_order, notes: i.notes })),
     });
     setModalOpen(true);
   };
@@ -105,7 +122,8 @@ export default function Recipes() {
       const ings = [...f.ingredients];
       if (field === 'material_id') {
         const mat = materials.find(m => m.id === value);
-        ings[idx] = { ...ings[idx], material_id: value, material_name: mat?.name || '', material_type: mat?.material_category || 'flavor', density: mat?.density || 0, pg_content: mat?.pg_content || 0, vg_content: mat?.vg_content || 0, nicotine_strength: mat?.nicotine_strength || 0 };
+        const isPremix = mat?.material_type === 'PREMIX';
+        ings[idx] = { ...ings[idx], material_id: value, material_name: mat?.name || '', material_type: isPremix ? 'premix' : (mat?.material_category || 'flavor'), is_premix: isPremix, density: mat?.density || mat?.default_density || 0, pg_content: mat?.pg_content || 0, vg_content: mat?.vg_content || 0, nicotine_strength: mat?.nicotine_strength || 0, concentration_value: mat?.concentration_value || 0 };
       } else {
         ings[idx] = { ...ings[idx], [field]: field === 'percentage' || field === 'density' || field === 'mix_order' ? Number(value) : value };
       }
@@ -120,7 +138,15 @@ export default function Recipes() {
   const handleSubmit = async () => {
     if (!form.name || !form.brand_id) { toast({ variant: 'destructive', title: 'Nama dan merk wajib diisi' }); return; }
     if (form.ingredients.length === 0) { toast({ variant: 'destructive', title: 'Resep harus memiliki minimal 1 bahan' }); return; }
-    if (calcResult && !calcResult.validation.valid) {
+    if (form.recipe_type === 'PREMIX') {
+      const outputMaterial = materials.find(m => m.id === form.output_material_id);
+      const premixRecipes = data.filter(r => r.recipe_type === 'PREMIX' && r.id !== editing?.id);
+      const allIngs = premixRecipes.length ? await base44.entities.RecipeIngredient.filter({ recipe_id: { $in: premixRecipes.map(r => r.id) } }) : [];
+      const premixMap = buildPremixCompositionMap(premixRecipes, allIngs);
+      premixMap[form.output_material_id] = { recipe: { id: 'current' }, components: form.ingredients };
+      const v = validatePremixRecipe({ recipe: form, ingredients: form.ingredients, outputMaterial, materialsById: Object.fromEntries(materials.map(m => [m.id, m])), premixMap });
+      if (!v.valid) { toast({ variant: 'destructive', title: 'Resep premix tidak valid', description: v.errors[0] }); return; }
+    } else if (calcResult && !calcResult.validation.valid) {
       toast({ variant: 'destructive', title: 'Resep tidak valid', description: calcResult.validation.errors[0] });
       return;
     }
@@ -131,10 +157,17 @@ export default function Recipes() {
       const totalFlavor = form.ingredients.filter(i => i.material_type === 'flavor').reduce((s, i) => s + Number(i.percentage), 0);
       let recipeCode = form.code;
       if (!editing) recipeCode = await generateRecipeCode();
+      const outputMaterial = materials.find(m => m.id === form.output_material_id);
       const payload = {
         code: recipeCode, name: form.name,
         brand_id: form.brand_id, brand_name: brand?.name || '',
         product_id: form.product_id, product_name: product?.name || '',
+        recipe_type: form.recipe_type,
+        output_material_id: form.output_material_id || '',
+        output_material_name: outputMaterial?.name || '',
+        calculation_basis: form.calculation_basis || 'W_W',
+        target_quantity: Number(form.target_quantity),
+        target_unit: form.target_unit,
         version: editing?.version || 1,
         target_volume: Number(form.target_volume),
         target_nicotine: Number(form.target_nicotine),
@@ -159,6 +192,7 @@ export default function Recipes() {
       await base44.entities.RecipeIngredient.bulkCreate(form.ingredients.map(i => ({
         recipe_id: recipeId,
         material_id: i.material_id, material_name: i.material_name, material_type: i.material_type,
+        is_premix: !!i.is_premix, concentration_value: Number(i.concentration_value) || 0,
         percentage: Number(i.percentage), density: Number(i.density), pg_content: Number(i.pg_content), vg_content: Number(i.vg_content),
         nicotine_strength: Number(i.nicotine_strength), mix_order: i.mix_order || 0, notes: i.notes || '',
       })));
@@ -196,6 +230,9 @@ export default function Recipes() {
   const columns = [
     { key: 'code', header: 'Kode', sortable: true, className: 'font-mono font-medium' },
     { key: 'name', header: 'Nama Resep', sortable: true, className: 'font-medium' },
+    { key: 'recipe_type', header: 'Tipe', render: (row) => row.recipe_type === 'PREMIX'
+      ? <span className="text-[11px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold">Premix</span>
+      : <span className="text-[11px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">Produk Jadi</span> },
     { key: 'brand_name', header: 'Merk', render: (row) => row.brand_name || '—' },
     { key: 'target_volume', header: 'Target', render: (row) => `${row.target_volume || 0} ml` },
     { key: 'target_nicotine', header: 'Nic', render: (row) => `${row.target_nicotine || 0} mg` },
@@ -217,7 +254,7 @@ export default function Recipes() {
     },
   ];
 
-  const mcLabel = { flavor: 'Flavor', propylene_glycol: 'PG', vegetable_glycerin: 'VG', nicotine: 'Nicotine', sweetener: 'Sweetener', cooling: 'Cooling', additive: 'Additive', lainnya: 'Lainnya' };
+  const mcLabel = { flavor: 'Flavor', propylene_glycol: 'PG', vegetable_glycerin: 'VG', nicotine: 'Nicotine', sweetener: 'Sweetener', cooling: 'Cooling', additive: 'Additive', premix: 'Premix', lainnya: 'Lainnya' };
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
@@ -243,10 +280,46 @@ export default function Recipes() {
               <SelectContent>{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div><Label className="text-[12.5px] mb-1">Target Volume (ml)</Label><Input type="number" value={form.target_volume} onChange={e => setForm({ ...form, target_volume: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Target Nicotine (mg/ml)</Label><Input type="number" step="0.5" value={form.target_nicotine} onChange={e => setForm({ ...form, target_nicotine: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Target PG (%)</Label><Input type="number" value={form.target_pg} onChange={e => setForm({ ...form, target_pg: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Target VG (%)</Label><Input type="number" value={form.target_vg} onChange={e => setForm({ ...form, target_vg: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div>
+            <Label className="text-[12.5px] mb-1">Tipe Resep</Label>
+            <Select value={form.recipe_type} onValueChange={v => setForm({ ...form, recipe_type: v })}>
+              <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+              <SelectContent>{recipeTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          {form.recipe_type === 'PREMIX' ? (
+            <>
+              <div>
+                <Label className="text-[12.5px] mb-1">Output Material *</Label>
+                <Select value={form.output_material_id} onValueChange={v => setForm({ ...form, output_material_id: v })}>
+                  <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih bahan premix output" /></SelectTrigger>
+                  <SelectContent>{materials.filter(m => m.material_type === 'PREMIX').map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[12.5px] mb-1">Basis Perhitungan</Label>
+                <Select value={form.calculation_basis} onValueChange={v => setForm({ ...form, calculation_basis: v })}>
+                  <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>{calcBases.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div><Label className="text-[12.5px] mb-1">Target Quantity</Label><Input type="number" value={form.target_quantity} onChange={e => setForm({ ...form, target_quantity: e.target.value })} className="h-9 text-[13px]" /></div>
+              <div>
+                <Label className="text-[12.5px] mb-1">Satuan Target</Label>
+                <Select value={form.target_unit} onValueChange={v => setForm({ ...form, target_unit: v })}>
+                  <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="gram">Gram</SelectItem><SelectItem value="mililiter">Mililiter</SelectItem></SelectContent>
+                </Select>
+              </div>
+            </>
+          ) : (
+            <>
+              <div><Label className="text-[12.5px] mb-1">Target Volume (ml)</Label><Input type="number" value={form.target_volume} onChange={e => setForm({ ...form, target_volume: e.target.value })} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target Nicotine (mg/ml)</Label><Input type="number" step="0.5" value={form.target_nicotine} onChange={e => setForm({ ...form, target_nicotine: e.target.value })} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target PG (%)</Label><Input type="number" value={form.target_pg} onChange={e => setForm({ ...form, target_pg: e.target.value })} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target VG (%)</Label><Input type="number" value={form.target_vg} onChange={e => setForm({ ...form, target_vg: e.target.value })} className="h-9 text-[13px]" /></div>
+            </>
+          )}
         </div>
 
         {/* Ingredients */}
@@ -271,8 +344,20 @@ export default function Recipes() {
           </div>
         </div>
 
+        {/* Premix Preview */}
+        {form.recipe_type === 'PREMIX' && (
+          <div className="border-t pt-3 mt-3">
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-[12.5px] font-semibold">Preview Premix</Label>
+              <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${Math.abs(form.ingredients.reduce((s, i) => s + Number(i.percentage || 0), 0) - 100) < 0.1 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                Total {form.ingredients.reduce((s, i) => s + Number(i.percentage || 0), 0).toFixed(2)}%
+              </span>
+            </div>
+            <div className="text-[11.5px] text-muted-foreground">Basis: {calcBases.find(b => b.value === form.calculation_basis)?.label} · Output: {materials.find(m => m.id === form.output_material_id)?.name || '—'}</div>
+          </div>
+        )}
         {/* Calculation Preview */}
-        {calcResult && (
+        {form.recipe_type !== 'PREMIX' && calcResult && (
           <div className="border-t pt-3 mt-3">
             <div className="flex items-center justify-between mb-2">
               <Label className="text-[12.5px] font-semibold">Hasil Kalkulasi</Label>

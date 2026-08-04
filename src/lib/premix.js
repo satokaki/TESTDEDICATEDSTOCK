@@ -247,10 +247,10 @@ export function isBatchUsable(batch) {
 }
 
 /**
- * Ambil batch premix untuk suatu produk jadi (traceability downstream).
+ * Ambil batch premix yang dihasilkan oleh suatu production order (premix production).
  */
 export async function getBatchesUsedByProduction(productionId) {
-  return base44.entities.PremixBatchComponent.filter({ premix_batch_id_reference: productionId });
+  return base44.entities.PremixBatch.filter({ production_id: productionId });
 }
 
 /**
