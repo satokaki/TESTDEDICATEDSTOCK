@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
+import { appParams } from '@/lib/app-params';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
 import PageHeader from '@/components/PageHeader';
@@ -108,14 +109,31 @@ export default function Users() {
   const handleInvite = async () => {
     if (!inviteForm.email || !inviteForm.full_name) { toast({ variant: 'destructive', title: 'Nama dan email wajib diisi' }); return; }
     const email = inviteForm.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast({ variant: 'destructive', title: 'Format email tidak valid' });
+      return;
+    }
     // Dedup: reject if active user or active/pending invitation already exists.
     const exists = data.find((r) => (r.email || '').toLowerCase() === email && r.status !== 'inactive' && r.status !== 'deleted');
     if (exists) {
       toast({ variant: 'destructive', title: 'Pengguna dengan email ini sudah terdaftar atau memiliki undangan aktif.' });
       return;
     }
+    // Guard: the platform invitation endpoint needs a valid active App ID.
+    if (!appParams.appId) {
+      toast({
+        type: 'error',
+        title: 'App ID belum dikonfigurasi',
+        description: 'Publish ulang aplikasi dari builder Base44 agar App ID aktif terpasang, lalu muat ulang halaman.',
+        duration: 7000,
+      });
+      return;
+    }
     setSubmitting(true);
     try {
+      // Call the platform invitation endpoint first; only track locally on success
+      // to avoid dangling UserInvitation records when the endpoint rejects.
+      await base44.users.inviteUser(email, inviteForm.role);
       await base44.entities.UserInvitation.create({
         email,
         full_name: inviteForm.full_name,
@@ -123,12 +141,22 @@ export default function Users() {
         status: 'pending',
         invited_by: currentUser?.full_name || currentUser?.email || '',
       });
-      await base44.users.inviteUser(email, inviteForm.role);
       toast({ title: 'Undangan terkirim', description: `${inviteForm.full_name} · ${email}` });
       setInviteOpen(false);
       loadData();
     } catch (e) {
-      toast({ variant: 'destructive', title: 'Gagal mengundang', description: e.message });
+      const errData = e?.response?.data || {};
+      const msg = (errData.message || errData.detail || errData.error || e.message || '').toString();
+      if (/app not found/i.test(msg)) {
+        toast({
+          type: 'error',
+          title: 'Undangan gagal — layanan tidak menemukan aplikasi (App not found)',
+          description: 'App ID pada build ini kemungkinan kedaluwarsa. Publish ulang aplikasi dari builder Base44, muat ulang halaman, lalu undang ulang. Pengguna lama tetap dapat login.',
+          duration: 9000,
+        });
+      } else {
+        toast({ variant: 'destructive', title: 'Gagal mengundang', description: msg || 'Terjadi kesalahan' });
+      }
     } finally {
       setSubmitting(false);
     }
