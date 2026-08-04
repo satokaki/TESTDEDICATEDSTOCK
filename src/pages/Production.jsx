@@ -194,6 +194,12 @@ export default function Production() {
 
   const handlePost = async () => {
     if (!editing) return;
+    // Idempotency: a production order can only be posted from siap_produksi /
+    // sedang_diproses. Once posted (siap_bottling) it must never mutate stock again.
+    if (!['siap_produksi', 'sedang_diproses'].includes(editing.status)) {
+      toast({ variant: 'destructive', title: 'Produksi sudah diposting', description: 'Transaksi tidak dapat diposting dua kali.' });
+      return;
+    }
     const allFilled = stockCheck.length > 0; // use detail materials instead
     const mats = await base44.entities.ProductionMaterial.filter({ production_id: editing.id });
     // Check actual grams entered
@@ -225,6 +231,7 @@ export default function Production() {
       await recordStockMovement({
         item_type: 'product', item_id: editing.product_id || editing.recipe_id, item_name: `Bulk ${editing.product_name || editing.recipe_code}`, item_code: editing.batch_number,
         batch_id: editing.id, batch_number: editing.batch_number,
+        inventory_status: 'BULK',
         quantity_in: Number(actualVolume), unit: 'ml',
         transaction_type: 'production_output', transaction_number: editing.production_number,
         reference_type: 'production', reference_id: editing.id,

@@ -79,6 +79,7 @@ export default function Labeling() {
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
         batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
+        inventory_status: 'READY_FOR_LABELING',
         quantity_out: Number(form.quantity), unit: 'unit',
         transaction_type: 'labeling_consumption', transaction_number: lblNumber,
         reference_type: 'labeling', reference_id: labeling.id,
@@ -88,6 +89,7 @@ export default function Labeling() {
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
         batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
+        inventory_status: 'UNEXCISED',
         quantity_in: Number(form.quantity), unit: 'unit',
         transaction_type: 'labeling_output', transaction_number: lblNumber,
         reference_type: 'labeling', reference_id: labeling.id,

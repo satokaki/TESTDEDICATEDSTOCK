@@ -9,6 +9,10 @@
     "item_id": {
       "type": "string"
     },
+    "inventory_status": {
+      "type": "string",
+      "description": "Status persediaan: RAW_MATERIAL, BULK, READY_FOR_LABELING, UNEXCISED, READY_FOR_SALE, QUARANTINE, REJECTED. Membedakan stage barang yang sama agar tidak menumpuk di satu baris balance (mencegah stok ganda & perpindahan status net-0)."
+    },
     "item_name": {
       "type": "string"
     },

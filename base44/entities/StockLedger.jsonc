@@ -18,8 +18,10 @@
         "purchase_receipt",
         "production_consumption",
         "production_output",
+        "production_waste",
         "bottling_consumption",
         "bottling_output",
+        "bottling_waste",
         "labeling_consumption",
         "labeling_output",
         "excise_consumption",
@@ -27,6 +29,9 @@
         "sales",
         "sales_return",
         "production_reversal",
+        "bottling_reversal",
+        "labeling_reversal",
+        "excise_reversal",
         "sales_reversal",
         "stock_adjustment",
         "transfer_gudang",
@@ -40,6 +45,10 @@
     "item_type": {
       "type": "string",
       "description": "Jenis item (material, product)"
+    },
+    "inventory_status": {
+      "type": "string",
+      "description": "Status persediaan baris balance yang terpengaruh (RAW_MATERIAL, BULK, READY_FOR_LABELING, UNEXCISED, READY_FOR_SALE, QUARANTINE, REJECTED) \u2014 untuk rekonsiliasi per stage."
     },
     "item_id": {
       "type": "string"

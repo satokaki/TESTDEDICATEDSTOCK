@@ -80,6 +80,7 @@ export default function Excise() {
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
         batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
+        inventory_status: 'UNEXCISED',
         quantity_out: Number(form.quantity), unit: 'unit',
         transaction_type: 'excise_consumption', transaction_number: excNumber,
         reference_type: 'excise', reference_id: excise.id,
@@ -89,6 +90,7 @@ export default function Excise() {
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
         batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
+        inventory_status: 'READY_FOR_SALE',
         quantity_in: Number(form.quantity), unit: 'unit',
         transaction_type: 'excise_output', transaction_number: excNumber,
         reference_type: 'excise', reference_id: excise.id,

@@ -91,6 +91,7 @@ export default function Bottling() {
       await recordStockMovement({
         item_type: 'product', item_id: batch.product_id || batch.id, item_name: `Bulk ${batch.product_name || batch.batch_number}`, item_code: batch.batch_number,
         batch_id: batch.id, batch_number: batch.batch_number,
+        inventory_status: 'BULK',
         quantity_out: totalBulk, unit: 'ml',
         transaction_type: 'bottling_consumption', transaction_number: blgNumber,
         reference_type: 'bottling', reference_id: bottling.id,
@@ -101,6 +102,7 @@ export default function Bottling() {
         await recordStockMovement({
           item_type: 'product', item_id: o.product_id, item_name: o.product_name, item_code: prod?.code || '',
           batch_id: batch.id, batch_number: batch.batch_number,
+          inventory_status: 'READY_FOR_LABELING',
           quantity_in: o.bottle_count, unit: 'unit',
           transaction_type: 'bottling_output', transaction_number: blgNumber,
           reference_type: 'bottling', reference_id: bottling.id,

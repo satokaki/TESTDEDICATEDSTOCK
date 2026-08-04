@@ -8,6 +8,7 @@ export async function recordStockMovement({
   item_type, item_id, item_code, item_name,
   batch_id = '', batch_number = '',
   warehouse_id = '', warehouse_name = '',
+  inventory_status = '',
   quantity_in = 0, quantity_out = 0, unit,
   transaction_type, transaction_number,
   reference_type = '', reference_id = '',
@@ -19,6 +20,7 @@ export async function recordStockMovement({
     transaction_number,
     transaction_type,
     item_type,
+    inventory_status,
     item_id,
     item_code: item_code || '',
     item_name,
@@ -35,10 +37,16 @@ export async function recordStockMovement({
     notes,
   });
 
-  // Update or create stock balance
+  // Update or create stock balance.
+  // Unique balance key = item_id + batch_id + warehouse_id + inventory_status.
+  // inventory_status separates BULK / READY_FOR_LABELING / UNEXCISED / READY_FOR_SALE
+  // so a product changing stage never collapses into one balance row (prevents
+  // double stock and net-0 "status changes"). Materials keep status '' to match
+  // existing purchase-created balances (backward compatible).
   const filter = { item_id };
   if (batch_id) filter.batch_id = batch_id;
   if (warehouse_id) filter.warehouse_id = warehouse_id;
+  if (inventory_status) filter.inventory_status = inventory_status;
 
   const balances = await base44.entities.StockBalance.filter(filter);
   if (balances.length > 0) {
@@ -59,6 +67,7 @@ export async function recordStockMovement({
     await base44.entities.StockBalance.create({
       item_type,
       item_id,
+      inventory_status,
       item_name,
       item_code: item_code || '',
       batch_id,
