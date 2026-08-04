@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
@@ -8,13 +8,34 @@ import FormModal from '@/components/FormModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ROLES, roleLabel } from '@/lib/roles';
-import { MENU_CATALOG, getDefaultPermissions, normalizePermissions } from '@/lib/permissions';
+import { MENU_CATALOG, getDefaultPermissions, normalizePermissions, hasPermission } from '@/lib/permissions';
 import { generateUserCode } from '@/lib/sequence';
-import { UserPlus, Pencil, Shield, ShieldCheck } from 'lucide-react';
+import { format } from 'date-fns';
+import { UserPlus, Pencil, Shield, ShieldCheck, Trash2 } from 'lucide-react';
 
 const actionLabel = { view: 'Lihat', create: 'Tambah', edit: 'Edit', delete: 'Hapus' };
+
+const statusBadge = (status) => {
+  const cls = {
+    active: 'bg-emerald-100 text-emerald-700',
+    inactive: 'bg-slate-200 text-slate-600',
+    suspended: 'bg-red-100 text-red-700',
+    deleted: 'bg-slate-300 text-slate-500',
+    pending_invitation: 'bg-amber-100 text-amber-700',
+  }[status] || 'bg-muted text-muted-foreground';
+  const label = {
+    active: 'Aktif', inactive: 'Nonaktif', suspended: 'Suspended',
+    deleted: 'Dihapus', pending_invitation: 'Menunggu Login',
+  }[status] || status;
+  return <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${cls}`}>{label}</span>;
+};
 
 export default function Users() {
   const { toast } = useToast();
@@ -27,7 +48,14 @@ export default function Users() {
   const [inviteForm, setInviteForm] = useState({ email: '', full_name: '', role: 'user' });
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({ role: 'user', status: 'active', permissions: {} });
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
 
+  const canDelete = hasPermission(currentUser, 'users', 'delete');
+
+  // Reconcile User records + invitations into one row per email.
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -35,11 +63,32 @@ export default function Users() {
         base44.entities.User.list('-created_date', 200),
         base44.entities.UserInvitation.list('-created_date', 200).catch(() => []),
       ]);
-      const usedEmails = new Set(users.map((u) => (u.email || '').toLowerCase()));
-      const pendingRows = invs
-        .filter((i) => i.status === 'pending' && !usedEmails.has((i.email || '').toLowerCase()))
-        .map((i) => ({ id: i.id, kind: 'invitation', full_name: i.full_name || '', email: i.email, role: i.role, status: 'pending_invitation' }));
-      setData([...users.map((u) => ({ ...u, kind: 'user' })), ...pendingRows]);
+      const rows = users.map((u) => ({
+        id: u.id, kind: 'user', user_code: u.user_code, full_name: u.full_name,
+        email: u.email, role: u.role, status: u.status || 'active',
+        last_login_at: u.last_login_at || u.updated_date,
+      }));
+      const usedEmails = new Set(rows.map((r) => (r.email || '').toLowerCase()));
+
+      // Group invitations by email (prefer accepted > pending), skip cancelled.
+      const invByEmail = {};
+      for (const i of invs) {
+        if (i.status === 'cancelled') continue;
+        const e = (i.email || '').toLowerCase();
+        if (usedEmails.has(e)) continue;
+        const prev = invByEmail[e];
+        if (!prev) { invByEmail[e] = i; continue; }
+        // keep accepted over pending; else keep latest
+        if (i.status === 'accepted' && prev.status !== 'accepted') invByEmail[e] = i;
+        else if (i.status === prev.status && new Date(i.created_date) > new Date(prev.created_date)) invByEmail[e] = i;
+      }
+      const invRows = Object.values(invByEmail).map((i) => ({
+        id: i.id, kind: 'invitation', user_code: i.user_code, full_name: i.full_name || '',
+        email: i.email, role: i.role,
+        status: i.status === 'accepted' ? 'active' : 'pending_invitation',
+        last_login_at: i.last_login_at || i.accepted_at,
+      }));
+      setData([...rows, ...invRows]);
     } catch {
       toast({ variant: 'destructive', title: 'Gagal memuat data pengguna' });
     } finally {
@@ -49,21 +98,33 @@ export default function Users() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const filteredData = useMemo(() => {
+    if (statusFilter === 'all') return data;
+    return data.filter((r) => r.status === statusFilter);
+  }, [data, statusFilter]);
+
   const openInvite = () => { setInviteForm({ email: '', full_name: '', role: 'user' }); setInviteOpen(true); };
 
   const handleInvite = async () => {
     if (!inviteForm.email || !inviteForm.full_name) { toast({ variant: 'destructive', title: 'Nama dan email wajib diisi' }); return; }
+    const email = inviteForm.email.trim().toLowerCase();
+    // Dedup: reject if active user or active/pending invitation already exists.
+    const exists = data.find((r) => (r.email || '').toLowerCase() === email && r.status !== 'inactive' && r.status !== 'deleted');
+    if (exists) {
+      toast({ variant: 'destructive', title: 'Pengguna dengan email ini sudah terdaftar atau memiliki undangan aktif.' });
+      return;
+    }
     setSubmitting(true);
     try {
       await base44.entities.UserInvitation.create({
-        email: inviteForm.email.toLowerCase(),
+        email,
         full_name: inviteForm.full_name,
         role: inviteForm.role,
         status: 'pending',
         invited_by: currentUser?.full_name || currentUser?.email || '',
       });
-      await base44.users.inviteUser(inviteForm.email, inviteForm.role);
-      toast({ title: 'Undangan terkirim', description: `${inviteForm.full_name} · ${inviteForm.email}` });
+      await base44.users.inviteUser(email, inviteForm.role);
+      toast({ title: 'Undangan terkirim', description: `${inviteForm.full_name} · ${email}` });
       setInviteOpen(false);
       loadData();
     } catch (e) {
@@ -77,7 +138,7 @@ export default function Users() {
     setEditing(item);
     setEditForm({
       role: item.role || 'user',
-      status: item.status || 'active',
+      status: item.status === 'pending_invitation' ? 'active' : (item.status || 'active'),
       permissions: normalizePermissions(item.permissions),
     });
     setEditOpen(true);
@@ -103,7 +164,6 @@ export default function Users() {
         status: editForm.status,
         permissions: normalizePermissions(editForm.permissions),
       };
-      // Assign user_code if missing
       if (!editing.user_code) {
         try { payload.user_code = await generateUserCode(); } catch { /* ignore */ }
       }
@@ -118,6 +178,26 @@ export default function Users() {
     }
   };
 
+  const openDelete = (row) => { setDeleteTarget(row); setDeleteReason(''); };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await base44.functions.invoke('deactivateUser', { email: deleteTarget.email, reason: deleteReason });
+      const d = res && res.data ? res.data : res;
+      if (d && d.error) { toast({ variant: 'destructive', title: d.error }); return; }
+      toast({ title: 'Pengguna dinonaktifkan', description: deleteTarget.email });
+      setDeleteTarget(null);
+      loadData();
+    } catch (e) {
+      const msg = e?.response?.data?.error || e?.message || 'Gagal menonaktifkan';
+      toast({ variant: 'destructive', title: msg });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const columns = [
     { key: 'user_code', header: 'Kode', sortable: true, className: 'font-mono font-medium', render: (row) => row.user_code || '—' },
     { key: 'full_name', header: 'Nama', sortable: true, className: 'font-medium', render: (row) => row.full_name || '—' },
@@ -128,26 +208,33 @@ export default function Users() {
         ? <span className="text-[11px] px-2 py-0.5 bg-primary/10 text-primary rounded font-semibold inline-flex items-center gap-1"><ShieldCheck className="w-3 h-3" />{roleLabel(row.role)}</span>
         : <span className="text-[11px] px-2 py-0.5 bg-muted rounded">{roleLabel(row.role)}</span>,
     },
+    { key: 'status', header: 'Status', render: (row) => statusBadge(row.status) },
     {
-      key: 'status', header: 'Status',
-      render: (row) => row.status === 'pending_invitation'
-        ? <span className="text-[11px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold">Menunggu Login</span>
-        : row.status === 'suspended'
-        ? <span className="text-[11px] px-2 py-0.5 bg-red-100 text-red-700 rounded font-semibold">Suspended</span>
-        : <span className="text-[11px] px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded font-semibold">Aktif</span>,
+      key: 'last_login_at', header: 'Login Terakhir', sortable: true,
+      render: (row) => row.last_login_at ? format(new Date(row.last_login_at), 'dd MMM yyyy, HH:mm') : '—',
     },
     {
-      key: 'actions', header: '', width: '70px',
+      key: 'actions', header: '', width: '90px',
       render: (row) => (
         <div className="flex items-center gap-1">
           <button
             onClick={() => openEdit(row)}
-            disabled={row.id === currentUser?.id || row.kind === 'invitation'}
+            disabled={row.kind === 'invitation' || row.id === currentUser?.id}
             className="p-1.5 hover:bg-muted rounded disabled:opacity-30"
-            title={row.kind === 'invitation' ? 'Menunggu user login pertama kali' : row.id === currentUser?.id ? 'Tidak bisa edit diri sendiri dari sini' : 'Edit'}
+            title={row.kind === 'invitation' ? 'User belum memiliki record (diundang)' : row.id === currentUser?.id ? 'Tidak bisa edit diri sendiri dari sini' : 'Edit'}
           >
             <Pencil className="w-3.5 h-3.5" />
           </button>
+          {canDelete && row.status !== 'inactive' && row.status !== 'deleted' && (
+            <button
+              onClick={() => openDelete(row)}
+              disabled={row.email?.toLowerCase() === currentUser?.email?.toLowerCase()}
+              className="p-1.5 hover:bg-red-50 rounded text-red-600 disabled:opacity-30"
+              title={row.email?.toLowerCase() === currentUser?.email?.toLowerCase() ? 'Tidak bisa menghapus akun sendiri' : 'Nonaktifkan pengguna'}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -158,11 +245,26 @@ export default function Users() {
       <PageHeader
         title="Manajemen Pengguna"
         description="Kelola pengguna, peran, dan hak akses per menu"
-        actions={<Button onClick={openInvite} size="sm" className="gap-1.5"><UserPlus className="w-4 h-4" /> Undang Pengguna</Button>}
+        actions={
+          <div className="flex items-center gap-2">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-9 w-[150px] text-[13px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Status</SelectItem>
+                <SelectItem value="active">Aktif</SelectItem>
+                <SelectItem value="pending_invitation">Menunggu Login</SelectItem>
+                <SelectItem value="inactive">Nonaktif</SelectItem>
+                <SelectItem value="suspended">Suspended</SelectItem>
+                <SelectItem value="deleted">Dihapus</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={openInvite} size="sm" className="gap-1.5"><UserPlus className="w-4 h-4" /> Undang Pengguna</Button>
+          </div>
+        }
       />
       <DataTable
         columns={columns}
-        data={data}
+        data={filteredData}
         loading={loading}
         emptyMessage="Belum ada pengguna"
         searchKeys={['user_code', 'full_name', 'email']}
@@ -172,7 +274,7 @@ export default function Users() {
       {/* Invite modal */}
       <FormModal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Undang Pengguna" onSubmit={handleInvite} submitting={submitting} submitLabel="Kirim Undangan">
         <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2 text-[11.5px] text-blue-700 mb-2">
-          Pengguna akan menerima email undangan untuk bergabung ke aplikasi ini.
+          Pengguna akan menerima email undangan untuk bergabung ke aplikasi ini. Role & nama akan otomatis terpasang saat login pertama.
         </div>
         <div className="space-y-3">
           <div>
@@ -198,7 +300,7 @@ export default function Users() {
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
             <Label className="text-[12.5px] mb-1">Peran</Label>
-            <Select value={editForm.role} onValueChange={(v) => setRolePreset(v)}>
+            <Select value={editForm.role} onValueChange={setRolePreset}>
               <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
               <SelectContent>{ROLES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
             </Select>
@@ -210,6 +312,8 @@ export default function Users() {
               <SelectContent>
                 <SelectItem value="active">Aktif</SelectItem>
                 <SelectItem value="suspended">Suspended</SelectItem>
+                <SelectItem value="inactive">Nonaktif</SelectItem>
+                <SelectItem value="deleted">Dihapus</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -262,6 +366,38 @@ export default function Users() {
           </div>
         )}
       </FormModal>
+
+      {/* Delete / deactivate confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus pengguna {deleteTarget?.full_name || deleteTarget?.email}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Pengguna tidak akan dapat mengakses aplikasi, tetapi histori transaksi tetap dipertahankan.
+              Email: {deleteTarget?.email}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div>
+            <Label className="text-[12.5px] mb-1">Alasan (opsional)</Label>
+            <Textarea
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              className="min-h-[60px] text-[13px]"
+              placeholder="Contoh: resign, pindah divisi, dll."
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? 'Memproses...' : 'Hapus Pengguna'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
