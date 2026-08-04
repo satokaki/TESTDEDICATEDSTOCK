@@ -10,7 +10,6 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
 import { hasPermission } from '@/lib/permissions';
 import { roleLabel } from '@/lib/roles';
-import PermissionDebug from '@/components/PermissionDebug';
 
 const menuItems = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/', group: 'utama', perm: 'dashboard' },
@@ -237,7 +236,6 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
-      <PermissionDebug />
     </div>
   );
 }

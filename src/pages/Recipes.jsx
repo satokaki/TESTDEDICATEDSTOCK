@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Copy, CheckCircle, Trash2, Calculator, X } from 'lucide-react';
+import NumberInput from '@/components/NumberInput';
+import { toNumber } from '@/lib/decimalInput';
 import { calculateRecipe } from '@/lib/recipeCalculator';
 import { createAuditLog } from '@/lib/stockUtils';
 import { generateRecipeCode } from '@/lib/sequence';
@@ -76,10 +78,10 @@ export default function Recipes() {
         vg_content: i.vg_content ?? materials.find(m => m.id === i.material_id)?.vg_content ?? 0,
         nicotine_strength: i.nicotine_strength ?? materials.find(m => m.id === i.material_id)?.nicotine_strength ?? 0,
       })),
-      targetVolume: Number(form.target_volume),
-      targetNicotine: Number(form.target_nicotine),
-      targetPG: Number(form.target_pg),
-      targetVG: Number(form.target_vg),
+      targetVolume: toNumber(form.target_volume),
+      targetNicotine: toNumber(form.target_nicotine),
+      targetPG: toNumber(form.target_pg),
+      targetVG: toNumber(form.target_vg),
       nicotineBaseStrength: form.ingredients.find(i => i.material_type === 'nicotine')?.nicotine_strength || 100,
     });
     setCalcResult(result);
@@ -114,7 +116,7 @@ export default function Recipes() {
   };
 
   const addIngredient = () => {
-    setForm(f => ({ ...f, ingredients: [...f.ingredients, { material_id: '', material_name: '', material_type: 'flavor', percentage: 0, density: 0, pg_content: 0, vg_content: 0, nicotine_strength: 0, mix_order: f.ingredients.length + 1 }] }));
+    setForm(f => ({ ...f, ingredients: [...f.ingredients, { material_id: '', material_name: '', material_type: 'flavor', percentage: '', density: 0, pg_content: 0, vg_content: 0, nicotine_strength: 0, mix_order: f.ingredients.length + 1 }] }));
   };
 
   const updateIngredient = (idx, field, value) => {
@@ -125,7 +127,11 @@ export default function Recipes() {
         const isPremix = mat?.material_type === 'PREMIX';
         ings[idx] = { ...ings[idx], material_id: value, material_name: mat?.name || '', material_type: isPremix ? 'premix' : (mat?.material_category || 'flavor'), is_premix: isPremix, density: mat?.density || mat?.default_density || 0, pg_content: mat?.pg_content || 0, vg_content: mat?.vg_content || 0, nicotine_strength: mat?.nicotine_strength || 0, concentration_value: mat?.concentration_value || 0 };
       } else {
-        ings[idx] = { ...ings[idx], [field]: field === 'percentage' || field === 'density' || field === 'mix_order' ? Number(value) : value };
+        // Keep percentage as a raw string while typing (allows clearing the
+        // field and typing decimals like 0.5 / 0.25). Other numeric fields that
+        // are not directly user-typed stay numeric.
+        const keepString = field === 'percentage';
+        ings[idx] = { ...ings[idx], [field]: keepString ? value : (['density', 'mix_order'].includes(field) ? Number(value) : value) };
       }
       return { ...f, ingredients: ings };
     });
@@ -154,7 +160,7 @@ export default function Recipes() {
     try {
       const brand = brands.find(b => b.id === form.brand_id);
       const product = products.find(p => p.id === form.product_id);
-      const totalFlavor = form.ingredients.filter(i => i.material_type === 'flavor').reduce((s, i) => s + Number(i.percentage), 0);
+      const totalFlavor = form.ingredients.filter(i => i.material_type === 'flavor').reduce((s, i) => s + toNumber(i.percentage), 0);
       let recipeCode = form.code;
       if (!editing) recipeCode = await generateRecipeCode();
       const outputMaterial = materials.find(m => m.id === form.output_material_id);
@@ -166,13 +172,13 @@ export default function Recipes() {
         output_material_id: form.output_material_id || '',
         output_material_name: outputMaterial?.name || '',
         calculation_basis: form.calculation_basis || 'W_W',
-        target_quantity: Number(form.target_quantity),
+        target_quantity: toNumber(form.target_quantity),
         target_unit: form.target_unit,
         version: editing?.version || 1,
-        target_volume: Number(form.target_volume),
-        target_nicotine: Number(form.target_nicotine),
-        target_pg: Number(form.target_pg),
-        target_vg: Number(form.target_vg),
+        target_volume: toNumber(form.target_volume),
+        target_nicotine: toNumber(form.target_nicotine),
+        target_pg: toNumber(form.target_pg),
+        target_vg: toNumber(form.target_vg),
         total_flavor: totalFlavor,
         status: form.status, notes: form.notes,
       };
@@ -193,7 +199,7 @@ export default function Recipes() {
         recipe_id: recipeId,
         material_id: i.material_id, material_name: i.material_name, material_type: i.material_type,
         is_premix: !!i.is_premix, concentration_value: Number(i.concentration_value) || 0,
-        percentage: Number(i.percentage), density: Number(i.density), pg_content: Number(i.pg_content), vg_content: Number(i.vg_content),
+        percentage: toNumber(i.percentage), density: Number(i.density), pg_content: Number(i.pg_content), vg_content: Number(i.vg_content),
         nicotine_strength: Number(i.nicotine_strength), mix_order: i.mix_order || 0, notes: i.notes || '',
       })));
       await createAuditLog({ module: 'Resep', action: editing ? 'Edit' : 'Tambah', entity_type: 'Recipe', entity_id: recipeId, reference_number: recipeCode });
@@ -303,7 +309,7 @@ export default function Recipes() {
                   <SelectContent>{calcBases.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label className="text-[12.5px] mb-1">Target Quantity</Label><Input type="number" value={form.target_quantity} onChange={e => setForm({ ...form, target_quantity: e.target.value })} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target Quantity</Label><NumberInput value={form.target_quantity} onChange={v => setForm({ ...form, target_quantity: v })} maxDecimals={3} className="h-9 text-[13px]" /></div>
               <div>
                 <Label className="text-[12.5px] mb-1">Satuan Target</Label>
                 <Select value={form.target_unit} onValueChange={v => setForm({ ...form, target_unit: v })}>
@@ -314,10 +320,10 @@ export default function Recipes() {
             </>
           ) : (
             <>
-              <div><Label className="text-[12.5px] mb-1">Target Volume (ml)</Label><Input type="number" value={form.target_volume} onChange={e => setForm({ ...form, target_volume: e.target.value })} className="h-9 text-[13px]" /></div>
-              <div><Label className="text-[12.5px] mb-1">Target Nicotine (mg/ml)</Label><Input type="number" step="0.5" value={form.target_nicotine} onChange={e => setForm({ ...form, target_nicotine: e.target.value })} className="h-9 text-[13px]" /></div>
-              <div><Label className="text-[12.5px] mb-1">Target PG (%)</Label><Input type="number" value={form.target_pg} onChange={e => setForm({ ...form, target_pg: e.target.value })} className="h-9 text-[13px]" /></div>
-              <div><Label className="text-[12.5px] mb-1">Target VG (%)</Label><Input type="number" value={form.target_vg} onChange={e => setForm({ ...form, target_vg: e.target.value })} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target Volume (ml)</Label><NumberInput value={form.target_volume} onChange={v => setForm({ ...form, target_volume: v })} maxDecimals={2} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target Nicotine (mg/ml)</Label><NumberInput value={form.target_nicotine} onChange={v => setForm({ ...form, target_nicotine: v })} maxDecimals={2} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target PG (%)</Label><NumberInput value={form.target_pg} onChange={v => setForm({ ...form, target_pg: v })} maxDecimals={2} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12.5px] mb-1">Target VG (%)</Label><NumberInput value={form.target_vg} onChange={v => setForm({ ...form, target_vg: v })} maxDecimals={2} className="h-9 text-[13px]" /></div>
             </>
           )}
         </div>
@@ -336,7 +342,7 @@ export default function Recipes() {
                   <SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder="Pilih bahan" /></SelectTrigger>
                   <SelectContent>{materials.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
                 </Select>
-                <Input type="number" placeholder="%" value={ing.percentage} onChange={e => updateIngredient(idx, 'percentage', e.target.value)} className="h-8 text-[12px]" />
+                <NumberInput placeholder="%" value={ing.percentage} onChange={v => updateIngredient(idx, 'percentage', v)} max={100} maxDecimals={4} className="h-8 text-[12px]" />
                 <span className="text-[10px] text-muted-foreground px-1">{mcLabel[ing.material_type] || ing.material_type}</span>
                 <button type="button" onClick={() => removeIngredient(idx)} className="p-1 hover:bg-red-50 rounded text-red-500"><X className="w-3.5 h-3.5" /></button>
               </div>
@@ -349,8 +355,8 @@ export default function Recipes() {
           <div className="border-t pt-3 mt-3">
             <div className="flex items-center justify-between mb-2">
               <Label className="text-[12.5px] font-semibold">Preview Premix</Label>
-              <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${Math.abs(form.ingredients.reduce((s, i) => s + Number(i.percentage || 0), 0) - 100) < 0.1 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
-                Total {form.ingredients.reduce((s, i) => s + Number(i.percentage || 0), 0).toFixed(2)}%
+              <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${Math.abs(form.ingredients.reduce((s, i) => s + toNumber(i.percentage, 0), 0) - 100) < 0.0001 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                Total {form.ingredients.reduce((s, i) => s + toNumber(i.percentage, 0), 0).toFixed(2)}%
               </span>
             </div>
             <div className="text-[11.5px] text-muted-foreground">Basis: {calcBases.find(b => b.value === form.calculation_basis)?.label} · Output: {materials.find(m => m.id === form.output_material_id)?.name || '—'}</div>
