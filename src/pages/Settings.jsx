@@ -14,6 +14,7 @@ const menus = [
   { key: 'bottling', label: 'Bottling' },
   { key: 'labeling', label: 'Labeling' },
   { key: 'excise', label: 'Proses Cukai' },
+  { key: 'purchases', label: 'Pembelian' },
   { key: 'sales', label: 'Penjualan' },
   { key: 'payments', label: 'Pembayaran Piutang' },
   { key: 'stock_card', label: 'Kartu Stok' },

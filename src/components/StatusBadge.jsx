@@ -20,6 +20,10 @@ const statusColors = {
   belum_cukai: 'bg-orange-100 text-orange-700',
   siap_jual: 'bg-emerald-100 text-emerald-700',
   diproses: 'bg-blue-100 text-blue-700',
+  // Purchase status
+  ordered: 'bg-indigo-100 text-indigo-700',
+  partially_received: 'bg-amber-100 text-amber-700',
+  received: 'bg-cyan-100 text-cyan-700',
   // Sales
   posted: 'bg-blue-100 text-blue-700',
   completed: 'bg-emerald-100 text-emerald-700',
@@ -41,6 +45,9 @@ const statusLabels = {
   sedang_diproses: 'Sedang Diproses',
   selesai_mixing: 'Selesai Mixing',
   siap_bottling: 'Siap Bottling',
+  ordered: 'Ordered',
+  partially_received: 'Diterima Sebagian',
+  received: 'Diterima',
   dibatalkan: 'Dibatalkan',
   selesai: 'Selesai',
   siap_labeling: 'Siap Labeling',

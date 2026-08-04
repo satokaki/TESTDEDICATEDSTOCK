@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import NumberInput from '@/components/NumberInput';
 import { Plus, Pencil, Trash2, Lock } from 'lucide-react';
 import { generateProductCode } from '@/lib/sequence';
 
@@ -36,7 +37,7 @@ export default function Products() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ name: '', sku: '', barcode: '', brand_id: '', category_id: '', product_type: 'barang_siap_jual', bottle_size: 0, unit: 'unit', sale_price: 0, min_stock: 0, is_active: true, notes: '' });
+  const [form, setForm] = useState({ name: '', sku: '', barcode: '', brand_id: '', category_id: '', product_type: 'barang_siap_jual', bottle_size: '', unit: 'unit', sale_price: '', min_stock: '', is_active: true, notes: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -55,10 +56,10 @@ export default function Products() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const openAdd = () => { setEditing(null); setForm({ name: '', sku: '', barcode: '', brand_id: '', category_id: '', product_type: 'barang_siap_jual', bottle_size: 0, unit: 'unit', sale_price: 0, min_stock: 0, is_active: true, notes: '' }); setModalOpen(true); };
+  const openAdd = () => { setEditing(null); setForm({ name: '', sku: '', barcode: '', brand_id: '', category_id: '', product_type: 'barang_siap_jual', bottle_size: '', unit: 'unit', sale_price: '', min_stock: '', is_active: true, notes: '' }); setModalOpen(true); };
   const openEdit = (item) => {
     setEditing(item);
-    setForm({ name: item.name, sku: item.sku || '', barcode: item.barcode || '', brand_id: item.brand_id || '', category_id: item.category_id || '', product_type: item.product_type, bottle_size: item.bottle_size || 0, unit: item.unit || 'unit', sale_price: item.sale_price || 0, min_stock: item.min_stock || 0, is_active: item.is_active, notes: item.notes || '' });
+    setForm({ name: item.name, sku: item.sku || '', barcode: item.barcode || '', brand_id: item.brand_id || '', category_id: item.category_id || '', product_type: item.product_type, bottle_size: item.bottle_size ?? '', unit: item.unit || 'unit', sale_price: item.sale_price ?? '', min_stock: item.min_stock ?? '', is_active: item.is_active, notes: item.notes || '' });
     setModalOpen(true);
   };
 
@@ -156,10 +157,10 @@ export default function Products() {
           </div>
           <div><Label className="text-[12.5px] mb-1">SKU</Label><Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Barcode</Label><Input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Ukuran Botol (ml)</Label><Input type="number" value={form.bottle_size} onChange={e => setForm({ ...form, bottle_size: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Ukuran Botol (ml)</Label><NumberInput value={form.bottle_size} onChange={v => setForm({ ...form, bottle_size: v })} allowDecimal maxDecimals={1} min={0} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Satuan</Label><Input value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Harga Jual (Rp)</Label><Input type="number" value={form.sale_price} onChange={e => setForm({ ...form, sale_price: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Stok Minimum</Label><Input type="number" value={form.min_stock} onChange={e => setForm({ ...form, min_stock: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Harga Jual (Rp)</Label><NumberInput value={form.sale_price} onChange={v => setForm({ ...form, sale_price: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Stok Minimum</Label><NumberInput value={form.min_stock} onChange={v => setForm({ ...form, min_stock: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
         </div>
         <div><Label className="text-[12.5px] mb-1">Catatan</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} className="text-[13px]" /></div>
         <div className="flex items-center gap-2 pt-1"><Switch checked={form.is_active} onCheckedChange={v => setForm({ ...form, is_active: v })} /><Label className="text-[12.5px]">Aktif</Label></div>

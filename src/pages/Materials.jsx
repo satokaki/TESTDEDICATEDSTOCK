@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import NumberInput from '@/components/NumberInput';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 
 const materialCategories = [
@@ -34,7 +35,7 @@ export default function Materials() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ code: '', name: '', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: 0, pg_content: 0, vg_content: 0, nicotine_strength: 0, min_stock: 0, last_purchase_price: 0, is_active: true, notes: '' });
+  const [form, setForm] = useState({ code: '', name: '', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, notes: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -53,10 +54,10 @@ export default function Materials() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const openAdd = () => { setEditing(null); setForm({ code: '', name: '', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: 0, pg_content: 0, vg_content: 0, nicotine_strength: 0, min_stock: 0, last_purchase_price: 0, is_active: true, notes: '' }); setModalOpen(true); };
+  const openAdd = () => { setEditing(null); setForm({ code: '', name: '', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, notes: '' }); setModalOpen(true); };
   const openEdit = (item) => {
     setEditing(item);
-    setForm({ code: item.code, name: item.name, category_id: item.category_id || '', material_category: item.material_category, supplier_id: item.supplier_id || '', unit: item.unit, density: item.density || 0, pg_content: item.pg_content || 0, vg_content: item.vg_content || 0, nicotine_strength: item.nicotine_strength || 0, min_stock: item.min_stock || 0, last_purchase_price: item.last_purchase_price || 0, is_active: item.is_active, notes: item.notes || '' });
+    setForm({ code: item.code, name: item.name, category_id: item.category_id || '', material_category: item.material_category, supplier_id: item.supplier_id || '', unit: item.unit, density: item.density ?? '', pg_content: item.pg_content ?? '', vg_content: item.vg_content ?? '', nicotine_strength: item.nicotine_strength ?? '', min_stock: item.min_stock ?? '', last_purchase_price: item.last_purchase_price ?? '', is_active: item.is_active, notes: item.notes || '' });
     setModalOpen(true);
   };
 
@@ -151,12 +152,12 @@ export default function Materials() {
               <SelectContent>{units.map(u => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div><Label className="text-[12.5px] mb-1">Density (g/ml)</Label><Input type="number" step="0.001" value={form.density} onChange={e => setForm({ ...form, density: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Kandungan PG (%)</Label><Input type="number" value={form.pg_content} onChange={e => setForm({ ...form, pg_content: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Kandungan VG (%)</Label><Input type="number" value={form.vg_content} onChange={e => setForm({ ...form, vg_content: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Kekuatan Nicotine (mg/ml)</Label><Input type="number" value={form.nicotine_strength} onChange={e => setForm({ ...form, nicotine_strength: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Stok Minimum</Label><Input type="number" value={form.min_stock} onChange={e => setForm({ ...form, min_stock: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Harga Beli Terakhir</Label><Input type="number" value={form.last_purchase_price} onChange={e => setForm({ ...form, last_purchase_price: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Density (g/ml)</Label><NumberInput value={form.density} onChange={v => setForm({ ...form, density: v })} allowDecimal maxDecimals={3} min={0} step="0.001" className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Kandungan PG (%)</Label><NumberInput value={form.pg_content} onChange={v => setForm({ ...form, pg_content: v })} allowDecimal maxDecimals={2} min={0} max={100} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Kandungan VG (%)</Label><NumberInput value={form.vg_content} onChange={v => setForm({ ...form, vg_content: v })} allowDecimal maxDecimals={2} min={0} max={100} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Kekuatan Nicotine (mg/ml)</Label><NumberInput value={form.nicotine_strength} onChange={v => setForm({ ...form, nicotine_strength: v })} allowDecimal maxDecimals={2} min={0} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Stok Minimum</Label><NumberInput value={form.min_stock} onChange={v => setForm({ ...form, min_stock: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Harga Beli Terakhir</Label><NumberInput value={form.last_purchase_price} onChange={v => setForm({ ...form, last_purchase_price: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
         </div>
         <div><Label className="text-[12.5px] mb-1">Catatan</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} className="text-[13px]" /></div>
         <div className="flex items-center gap-2 pt-1"><Switch checked={form.is_active} onCheckedChange={v => setForm({ ...form, is_active: v })} /><Label className="text-[12.5px]">Aktif</Label></div>

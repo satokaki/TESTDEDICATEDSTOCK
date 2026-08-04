@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import NumberInput from '@/components/NumberInput';
 import { Plus } from 'lucide-react';
 import { generateOrderNumber } from '@/lib/sequence';
 import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
@@ -23,7 +24,7 @@ export default function Excise() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ product_id: '', brand_id: '', bottle_size: 0, quantity: 0, excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+  const [form, setForm] = useState({ product_id: '', brand_id: '', bottle_size: '', quantity: '', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -46,7 +47,7 @@ export default function Excise() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const openAdd = () => {
-    setForm({ product_id: '', brand_id: '', bottle_size: 0, quantity: 0, excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+    setForm({ product_id: '', brand_id: '', bottle_size: '', quantity: '', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
     setModalOpen(true);
   };
 
@@ -121,7 +122,7 @@ export default function Excise() {
           <Select value={form.product_id} onValueChange={v => {
             const stock = belumCukaiStock.find(s => s.item_id === v);
             const prod = products.find(p => p.id === v);
-            setForm({ ...form, product_id: v, brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size || 0 });
+            setForm({ ...form, product_id: v, brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size ?? '' });
           }}>
             <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih produk belum cukai" /></SelectTrigger>
             <SelectContent>
@@ -134,8 +135,8 @@ export default function Excise() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><Label className="text-[12.5px] mb-1">Merk</Label><Input value={brands.find(b => b.id === form.brand_id)?.name || ''} disabled className="h-9 text-[13px] bg-muted/40" /></div>
-          <div><Label className="text-[12.5px] mb-1">Ukuran Botol (ml)</Label><Input type="number" value={form.bottle_size} onChange={e => setForm({ ...form, bottle_size: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Jumlah *</Label><Input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Ukuran Botol (ml)</Label><NumberInput value={form.bottle_size} onChange={v => setForm({ ...form, bottle_size: v })} allowDecimal maxDecimals={1} min={0} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Jumlah *</Label><NumberInput value={form.quantity} onChange={v => setForm({ ...form, quantity: v })} allowDecimal={false} min={0} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Jenis Pita Cukai</Label><Input value={form.excise_label_type} onChange={e => setForm({ ...form, excise_label_type: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Nomor Dokumen</Label><Input value={form.document_number} onChange={e => setForm({ ...form, document_number: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Nomor Referensi Cukai</Label><Input value={form.excise_reference_number} onChange={e => setForm({ ...form, excise_reference_number: e.target.value })} className="h-9 text-[13px]" /></div>

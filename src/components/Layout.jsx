@@ -15,6 +15,7 @@ const menuItems = [
   { label: 'Bottling', icon: Package, path: '/bottling', group: 'operasional' },
   { label: 'Labeling', icon: Tag, path: '/labeling', group: 'operasional' },
   { label: 'Proses Cukai', icon: Stamp, path: '/excise', group: 'operasional' },
+  { label: 'Pembelian', icon: Package, path: '/purchases', group: 'operasional' },
   { label: 'Penjualan', icon: ShoppingCart, path: '/sales', group: 'operasional' },
   { label: 'Pembayaran Piutang', icon: Wallet, path: '/payments', group: 'operasional' },
   { label: 'Kartu Stok', icon: ClipboardList, path: '/stock-card', group: 'operasional' },

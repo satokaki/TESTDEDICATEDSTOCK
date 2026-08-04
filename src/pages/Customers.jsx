@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import NumberInput from '@/components/NumberInput';
 import { Plus, Pencil, Trash2, Lock } from 'lucide-react';
 import { generateCustomerCode } from '@/lib/sequence';
 
@@ -19,7 +20,7 @@ export default function Customers() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', city: '', sales_person: '', credit_limit: 0, default_payment_terms: 0, is_active: true, notes: '' });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', city: '', sales_person: '', credit_limit: '', default_payment_terms: '', is_active: true, notes: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -32,10 +33,10 @@ export default function Customers() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const openAdd = () => { setEditing(null); setForm({ name: '', phone: '', email: '', address: '', city: '', sales_person: '', credit_limit: 0, default_payment_terms: 0, is_active: true, notes: '' }); setModalOpen(true); };
+  const openAdd = () => { setEditing(null); setForm({ name: '', phone: '', email: '', address: '', city: '', sales_person: '', credit_limit: '', default_payment_terms: '', is_active: true, notes: '' }); setModalOpen(true); };
   const openEdit = (item) => {
     setEditing(item);
-    setForm({ name: item.name, phone: item.phone || '', email: item.email || '', address: item.address || '', city: item.city || '', sales_person: item.sales_person || '', credit_limit: item.credit_limit || 0, default_payment_terms: item.default_payment_terms || 0, is_active: item.is_active, notes: item.notes || '' });
+    setForm({ name: item.name, phone: item.phone || '', email: item.email || '', address: item.address || '', city: item.city || '', sales_person: item.sales_person || '', credit_limit: item.credit_limit ?? '', default_payment_terms: item.default_payment_terms ?? '', is_active: item.is_active, notes: item.notes || '' });
     setModalOpen(true);
   };
 
@@ -105,8 +106,8 @@ export default function Customers() {
           <div><Label className="text-[12.5px] mb-1">Email</Label><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Kota</Label><Input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Sales</Label><Input value={form.sales_person} onChange={e => setForm({ ...form, sales_person: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Limit Piutang (Rp)</Label><Input type="number" value={form.credit_limit} onChange={e => setForm({ ...form, credit_limit: Number(e.target.value) })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Termin Default (hari)</Label><Input type="number" value={form.default_payment_terms} onChange={e => setForm({ ...form, default_payment_terms: Number(e.target.value) })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Limit Piutang (Rp)</Label><NumberInput value={form.credit_limit} onChange={v => setForm({ ...form, credit_limit: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Termin Default (hari)</Label><NumberInput value={form.default_payment_terms} onChange={v => setForm({ ...form, default_payment_terms: v })} allowDecimal={false} min={0} className="h-9 text-[13px]" /></div>
         </div>
         <div><Label className="text-[12.5px] mb-1">Alamat</Label><Textarea value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} rows={2} className="text-[13px]" /></div>
         <div><Label className="text-[12.5px] mb-1">Catatan</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} className="text-[13px]" /></div>

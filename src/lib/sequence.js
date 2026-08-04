@@ -94,6 +94,28 @@ export async function generateBatchNumber(brandCode) {
   );
 }
 
+export async function generatePurchaseNumber() {
+  const now = new Date();
+  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return generateDocumentCode(
+    `PURCHASE-${ym}`,
+    'PO',
+    now.getFullYear(),
+    (n) => `PO-${ym}-${padNumber(n)}`
+  );
+}
+
+export async function generatePayableNumber() {
+  const now = new Date();
+  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return generateDocumentCode(
+    `PAYABLE-${ym}`,
+    'AP',
+    now.getFullYear(),
+    (n) => `AP-${ym}-${padNumber(n)}`
+  );
+}
+
 export async function generateOrderNumber(prefix, entityName) {
   const now = new Date();
   const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;

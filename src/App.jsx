@@ -14,6 +14,7 @@ import Bottling from '@/pages/Bottling';
 import Labeling from '@/pages/Labeling';
 import Excise from '@/pages/Excise';
 import Sales from '@/pages/Sales';
+import Purchases from '@/pages/Purchases';
 import Payments from '@/pages/Payments';
 import StockCard from '@/pages/StockCard';
 import SalesReport from '@/pages/SalesReport';
@@ -62,6 +63,7 @@ const AuthenticatedApp = () => {
         <Route path="/labeling" element={<Labeling />} />
         <Route path="/excise" element={<Excise />} />
         <Route path="/sales" element={<Sales />} />
+        <Route path="/purchases" element={<Purchases />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/stock-card" element={<StockCard />} />
         <Route path="/reports/sales" element={<SalesReport />} />
