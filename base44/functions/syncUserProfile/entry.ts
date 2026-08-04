@@ -108,10 +108,14 @@ export default async function(req) {
     let authUser = null;
     try { authUser = await base44.auth.me(); } catch { authUser = null; }
     const jwt = decodeJwt(req);
-    const jwtId = jwt && (jwt.sub || jwt.user_id || jwt.id);
-    const jwtEmail = jwt && (jwt.email || jwt.user_email || jwt.email_address);
+    const jwtSub = jwt && (jwt.sub || jwt.user_id || jwt.id);
+    const jwtEmailRaw = jwt && (jwt.email || jwt.user_email || jwt.email_address);
+    // Base44 access tokens put the caller's email in `sub` and carry no separate
+    // email / user_id field — so treat `sub` as the email whenever it looks like one.
+    const jwtEmail = jwtEmailRaw || (typeof jwtSub === 'string' && jwtSub.includes('@') ? jwtSub : '');
+    const jwtId = (typeof jwtSub === 'string' && jwtSub.includes('@')) ? null : jwtSub;
 
-    const authId = (authUser && authUser.id) || jwtId;
+    const authId = (authUser && authUser.id) || jwtId || jwtEmail || null;
     const email = normalizeEmail((authUser && authUser.email) || jwtEmail || '');
     if (!authId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const now = new Date().toISOString();
