@@ -17,6 +17,7 @@ import { calculateRecipe } from '@/lib/recipeCalculator';
 import { createAuditLog } from '@/lib/stockUtils';
 import { generateRecipeCode } from '@/lib/sequence';
 import { validatePremixRecipe, buildPremixCompositionMap } from '@/lib/premix';
+import RecipeIngredientPicker from '@/components/RecipeIngredientPicker';
 
 const recipeTypes = [
   { value: 'FINISHED_PRODUCT', label: 'Produk Jadi' },
@@ -55,12 +56,12 @@ export default function Recipes() {
         base44.entities.Recipe.list('-created_date', 200),
         base44.entities.Brand.filter({ is_active: true }),
         base44.entities.Product.filter({ is_active: true }),
-        base44.entities.Material.filter({ is_active: true }),
+        base44.entities.Material.filter({ material_type: { $in: ['RAW_MATERIAL', 'PREMIX'] }, is_active: true }),
       ]);
       setData(items);
       setBrands(brs);
       setProducts(prods);
-      setMaterials(mats);
+      setMaterials(mats.filter(m => m.is_recipe_ingredient !== false));
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
     finally { setLoading(false); }
   }, [toast]);
@@ -338,10 +339,12 @@ export default function Recipes() {
             {form.ingredients.length === 0 && <div className="text-center py-4 text-[12px] text-muted-foreground border border-dashed rounded">Belum ada bahan. Klik "Tambah Bahan" untuk mulai.</div>}
             {form.ingredients.map((ing, idx) => (
               <div key={idx} className="grid grid-cols-[1fr_80px_80px_30px] gap-1.5 items-center">
-                <Select value={ing.material_id} onValueChange={v => updateIngredient(idx, 'material_id', v)}>
-                  <SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder="Pilih bahan" /></SelectTrigger>
-                  <SelectContent>{materials.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
-                </Select>
+                <RecipeIngredientPicker
+                  materials={materials}
+                  value={ing.material_id}
+                  onChange={v => updateIngredient(idx, 'material_id', v)}
+                  excludeIds={form.ingredients.filter((_, i) => i !== idx).map(i => i.material_id).filter(Boolean)}
+                />
                 <NumberInput placeholder="%" value={ing.percentage} onChange={v => updateIngredient(idx, 'percentage', v)} max={100} maxDecimals={4} className="h-8 text-[12px]" />
                 <span className="text-[10px] text-muted-foreground px-1">{mcLabel[ing.material_type] || ing.material_type}</span>
                 <button type="button" onClick={() => removeIngredient(idx)} className="p-1 hover:bg-red-50 rounded text-red-500"><X className="w-3.5 h-3.5" /></button>

@@ -42,6 +42,11 @@
       "default": false,
       "description": "Diproduksi internal (true untuk PREMIX)"
     },
+    "is_recipe_ingredient": {
+      "type": "boolean",
+      "default": true,
+      "description": "Boleh dipilih sebagai ingredient resep. Default true untuk RAW_MATERIAL/PREMIX; admin set false untuk mengecualikan bahan tertentu. Packaging/Label/Excise/Finished Good tetap tidak tampil di picker karena di-gate via material_type."
+    },
     "concentration_value": {
       "type": "number",
       "description": "Nilai konsentrasi (mis. 10 untuk 10%)"
