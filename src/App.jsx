@@ -29,6 +29,10 @@ import Materials from '@/pages/Materials';
 import Products from '@/pages/Products';
 import Warehouses from '@/pages/Warehouses';
 import Users from '@/pages/Users';
+import Login from '@/pages/Login';
+import Register from '@/pages/Register';
+import ForgotPassword from '@/pages/ForgotPassword';
+import ResetPassword from '@/pages/ResetPassword';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -80,6 +84,10 @@ const AuthenticatedApp = () => {
         <Route path="/master/products" element={<Products />} />
         <Route path="/master/warehouses" element={<Warehouses />} />
       </Route>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

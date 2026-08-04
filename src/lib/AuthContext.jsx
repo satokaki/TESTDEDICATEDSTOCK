@@ -43,13 +43,24 @@ export const AuthProvider = ({ children }) => {
         if (appParams.token) {
           await checkUserAuth();
         } else {
-          // No access token → app requires login. Force redirect to the login
-          // page so the role/permission flow actually runs instead of rendering
-          // an anonymous (empty sidebar) shell.
-          setAuthError({ type: 'auth_required', message: 'Authentication required' });
-          setIsLoadingAuth(false);
-          setIsAuthenticated(false);
-          setAuthChecked(true);
+          // No access token. If we're already on an auth page, let it render
+          // (otherwise we'd redirect to /login forever = circle of death).
+          // Otherwise the app requires login → force redirect to /login so the
+          // role/permission flow runs instead of an anonymous empty-sidebar shell.
+          const path = window.location.pathname;
+          const isAuthRoute = ['/login', '/register', '/forgot-password', '/reset-password'].some(
+            (p) => path === p || path.startsWith(p + '/')
+          );
+          if (isAuthRoute) {
+            setIsLoadingAuth(false);
+            setIsAuthenticated(false);
+            setAuthChecked(true);
+          } else {
+            setAuthError({ type: 'auth_required', message: 'Authentication required' });
+            setIsLoadingAuth(false);
+            setIsAuthenticated(false);
+            setAuthChecked(true);
+          }
         }
         setIsLoadingPublicSettings(false);
       } catch (appError) {
