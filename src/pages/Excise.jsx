@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import NumberInput from '@/components/NumberInput';
+import PdfButton from '@/components/PdfButton';
+import { exportDocumentToPDF } from '@/lib/pdfExport';
 import { Plus } from 'lucide-react';
 import { generateOrderNumber } from '@/lib/sequence';
 import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
@@ -99,6 +101,33 @@ export default function Excise() {
     finally { setSubmitting(false); }
   };
 
+  const exportExcisePDF = async (row) => {
+    try {
+      exportDocumentToPDF({
+        title: 'Dokumen Proses Cukai',
+        docNumber: row.excise_number, docDate: row.excise_date,
+        partyLabel: 'Produk', party: { name: row.product_name },
+        infoLines: [
+          { label: 'Merk', value: row.brand_name || '-' },
+          { label: 'No. Batch', value: row.batch_number || '-' },
+          { label: 'Ukuran', value: row.bottle_size ? `${row.bottle_size} ml` : '-' },
+          { label: 'Jenis Pita Cukai', value: row.excise_label_type || '-' },
+          { label: 'No. Dokumen', value: row.document_number || '-' },
+          { label: 'Ref. Cukai', value: row.excise_reference_number || '-' },
+          { label: 'Jumlah', value: row.quantity },
+          { label: 'Operator', value: row.operator || '-' },
+          { label: 'Status', value: row.status },
+        ],
+        itemColumns: [{ key: 'desc', header: 'Keterangan' }],
+        itemRows: [{ desc: `Proses cukai ${row.quantity} unit ${row.product_name} (batch ${row.batch_number || '-'}) — ref ${row.excise_reference_number || '-'}` }],
+        totals: [{ label: 'Jumlah Unit', value: row.quantity, bold: true }],
+        notes: row.notes,
+        signatures: [{ label: 'Operator,', name: row.operator || '' }],
+        fileName: `cukai-${row.excise_number}.pdf`,
+      });
+    } catch { toast({ variant: 'destructive', title: 'Gagal membuat PDF' }); }
+  };
+
   const columns = [
     { key: 'excise_number', header: 'No. Cukai', sortable: true, className: 'font-mono font-medium' },
     { key: 'product_name', header: 'Produk', sortable: true, className: 'font-medium' },
@@ -108,6 +137,7 @@ export default function Excise() {
     { key: 'excise_reference_number', header: 'Ref. Cukai', render: (row) => row.excise_reference_number || '—' },
     { key: 'excise_date', header: 'Tanggal', sortable: true },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+    { key: 'actions', header: '', width: '56px', render: (row) => <PdfButton onExport={() => exportExcisePDF(row)} perm="excise" iconOnly label="Cetak Dokumen" /> },
   ];
 
   return (

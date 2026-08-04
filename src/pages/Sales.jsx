@@ -14,6 +14,8 @@ import { Plus, X, CheckCircle } from 'lucide-react';
 import { generateInvoiceNumber } from '@/lib/sequence';
 import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
 import NumberInput from '@/components/NumberInput';
+import PdfButton from '@/components/PdfButton';
+import { exportDocumentToPDF } from '@/lib/pdfExport';
 
 export default function Sales() {
   const { toast } = useToast();
@@ -123,6 +125,47 @@ export default function Sales() {
 
   const fmtMoney = (v) => 'Rp ' + (v || 0).toLocaleString('id-ID');
 
+  const exportInvoicePDF = async (row) => {
+    try {
+      const items = await base44.entities.SaleItem.filter({ sale_id: row.id });
+      const cust = customers.find(c => c.id === row.customer_id);
+      exportDocumentToPDF({
+        title: 'Invoice',
+        docNumber: row.invoice_number, docDate: row.transaction_date,
+        partyLabel: 'Kepada Yth.', party: { name: row.customer_name, address: [cust?.city || ''].filter(Boolean), phone: cust?.phone || '' },
+        infoLines: [
+          { label: 'Sales', value: row.sales_person || '-' },
+          { label: 'Metode', value: row.payment_method },
+          { label: 'Jatuh Tempo', value: row.due_date || '-' },
+          { label: 'Status', value: row.payment_status },
+        ],
+        itemColumns: [
+          { key: 'no', header: '#', width: 22, align: 'right' },
+          { key: 'product_name', header: 'Produk' },
+          { key: 'batch_number', header: 'Batch', width: 80 },
+          { key: 'quantity', header: 'Qty', width: 45, align: 'right' },
+          { key: 'unit', header: 'Sat', width: 38 },
+          { key: 'price', header: 'Harga', width: 80, align: 'right' },
+          { key: 'subtotal', header: 'Subtotal', width: 90, align: 'right' },
+        ],
+        itemRows: items.map((it, i) => ({
+          no: i + 1, product_name: it.product_name, batch_number: it.batch_number || '-',
+          quantity: it.quantity, unit: it.unit || '', price: fmtMoney(it.price), subtotal: fmtMoney(it.subtotal),
+        })),
+        totals: [
+          { label: 'Subtotal', value: fmtMoney(row.subtotal) },
+          ...(row.discount ? [{ label: 'Diskon', value: fmtMoney(row.discount) }] : []),
+          { label: 'Total', value: fmtMoney(row.total), bold: true },
+          { label: 'Dibayar', value: fmtMoney(row.total_payment) },
+          ...(row.remaining_receivable > 0 ? [{ label: 'Sisa Piutang', value: fmtMoney(row.remaining_receivable), bold: true }] : []),
+        ],
+        notes: row.notes,
+        signatures: [{ label: 'Hormat kami,', name: row.sales_person || '' }],
+        fileName: `invoice-${row.invoice_number}.pdf`,
+      });
+    } catch { toast({ variant: 'destructive', title: 'Gagal membuat PDF invoice' }); }
+  };
+
   const columns = [
     { key: 'invoice_number', header: 'No. Invoice', sortable: true, className: 'font-mono font-medium' },
     { key: 'transaction_date', header: 'Tanggal', sortable: true },
@@ -132,6 +175,7 @@ export default function Sales() {
     { key: 'remaining_receivable', header: 'Sisa Piutang', render: (row) => row.remaining_receivable > 0 ? <span className="text-red-600 tabular-nums">{fmtMoney(row.remaining_receivable)}</span> : <span className="text-emerald-600">Lunas</span> },
     { key: 'transaction_status', header: 'Status', render: (row) => <StatusBadge status={row.transaction_status} /> },
     { key: 'payment_status', header: 'Pembayaran', render: (row) => <StatusBadge status={row.payment_status} /> },
+    { key: 'actions', header: '', width: '56px', render: (row) => <PdfButton onExport={() => exportInvoicePDF(row)} perm="invoice_pdf" iconOnly label="Cetak Invoice" /> },
   ];
 
   return (

@@ -14,6 +14,8 @@ import { Plus, CheckCircle } from 'lucide-react';
 import { generateOrderNumber } from '@/lib/sequence';
 import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
 import NumberInput from '@/components/NumberInput';
+import PdfButton from '@/components/PdfButton';
+import { exportDocumentToPDF } from '@/lib/pdfExport';
 
 export default function Labeling() {
   const { toast } = useToast();
@@ -98,6 +100,31 @@ export default function Labeling() {
     finally { setSubmitting(false); }
   };
 
+  const exportLabelingPDF = async (row) => {
+    try {
+      exportDocumentToPDF({
+        title: 'Work Order Labeling',
+        docNumber: row.labeling_number, docDate: row.labeling_date,
+        partyLabel: 'Produk', party: { name: row.product_name },
+        infoLines: [
+          { label: 'Merk', value: row.brand_name || '-' },
+          { label: 'No. Batch', value: row.batch_number || '-' },
+          { label: 'Ukuran', value: row.bottle_size ? `${row.bottle_size} ml` : '-' },
+          { label: 'Jenis Label', value: row.label_type || '-' },
+          { label: 'Jumlah', value: row.quantity },
+          { label: 'Operator', value: row.operator || '-' },
+          { label: 'Status', value: row.status },
+        ],
+        itemColumns: [{ key: 'desc', header: 'Keterangan' }],
+        itemRows: [{ desc: `Labeling ${row.quantity} unit ${row.product_name}${row.bottle_size ? ` ${row.bottle_size}ml` : ''} (batch ${row.batch_number || '-'})` }],
+        totals: [{ label: 'Jumlah Unit', value: row.quantity, bold: true }],
+        notes: row.notes,
+        signatures: [{ label: 'Operator,', name: row.operator || '' }],
+        fileName: `labeling-${row.labeling_number}.pdf`,
+      });
+    } catch { toast({ variant: 'destructive', title: 'Gagal membuat PDF' }); }
+  };
+
   const columns = [
     { key: 'labeling_number', header: 'No. Labeling', sortable: true, className: 'font-mono font-medium' },
     { key: 'product_name', header: 'Produk', sortable: true, className: 'font-medium' },
@@ -107,6 +134,7 @@ export default function Labeling() {
     { key: 'quantity', header: 'Jumlah', render: (row) => <span className="tabular-nums">{row.quantity}</span> },
     { key: 'labeling_date', header: 'Tanggal', sortable: true },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+    { key: 'actions', header: '', width: '56px', render: (row) => <PdfButton onExport={() => exportLabelingPDF(row)} perm="labeling" iconOnly label="Cetak Work Order" /> },
   ];
 
   return (

@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { generateOrderNumber } from '@/lib/sequence';
 import { recordStockMovement, createAuditLog } from '@/lib/stockUtils';
 import NumberInput from '@/components/NumberInput';
+import PdfButton from '@/components/PdfButton';
+import { exportDocumentToPDF } from '@/lib/pdfExport';
 
 export default function Bottling() {
   const { toast } = useToast();
@@ -113,6 +115,36 @@ export default function Bottling() {
     finally { setSubmitting(false); }
   };
 
+  const exportBottlingPDF = async (row) => {
+    try {
+      const outs = await base44.entities.BottlingOutput.filter({ bottling_id: row.id });
+      exportDocumentToPDF({
+        title: 'Work Order Bottling',
+        docNumber: row.bottling_number, docDate: row.bottling_date,
+        partyLabel: 'No. Batch', party: { name: row.batch_number },
+        infoLines: [
+          { label: 'Bulk Diproses', value: `${row.total_bulk_processed || 0} ml` },
+          { label: 'Total Output', value: `${row.total_output || 0} ml` },
+          { label: 'Waste', value: `${row.waste || 0} ml` },
+          { label: 'Operator', value: row.operator || '-' },
+          { label: 'Status', value: row.status },
+        ],
+        itemColumns: [
+          { key: 'no', header: '#', width: 24, align: 'right' },
+          { key: 'product_name', header: 'Produk' },
+          { key: 'bottle_count', header: 'Jumlah', width: 70, align: 'right' },
+          { key: 'volume_per_bottle', header: 'ml/Botol', width: 80, align: 'right' },
+          { key: 'total_volume', header: 'Total (ml)', width: 80, align: 'right' },
+        ],
+        itemRows: outs.map((o, i) => ({ no: i + 1, product_name: o.product_name, bottle_count: o.bottle_count, volume_per_bottle: o.volume_per_bottle, total_volume: o.total_volume })),
+        totals: [{ label: 'Total Output (ml)', value: row.total_output || 0, bold: true }],
+        notes: row.notes,
+        signatures: [{ label: 'Operator,', name: row.operator || '' }],
+        fileName: `bottling-${row.bottling_number}.pdf`,
+      });
+    } catch { toast({ variant: 'destructive', title: 'Gagal membuat PDF' }); }
+  };
+
   const columns = [
     { key: 'bottling_number', header: 'No. Bottling', sortable: true, className: 'font-mono font-medium' },
     { key: 'batch_number', header: 'No. Batch', className: 'font-mono' },
@@ -122,6 +154,7 @@ export default function Bottling() {
     { key: 'waste', header: 'Waste', render: (row) => `${row.waste} ml` },
     { key: 'remaining_bulk', header: 'Sisa', render: (row) => `${row.remaining_bulk} ml` },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+    { key: 'actions', header: '', width: '56px', render: (row) => <PdfButton onExport={() => exportBottlingPDF(row)} perm="bottling" iconOnly label="Cetak Work Order" /> },
   ];
 
   return (

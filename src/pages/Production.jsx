@@ -16,6 +16,8 @@ import { calculatePremixQuantities } from '@/lib/premix';
 import { generateProductionNumber, generateBatchNumber } from '@/lib/sequence';
 import { recordStockMovement, getStockBalance, createAuditLog } from '@/lib/stockUtils';
 import NumberInput from '@/components/NumberInput';
+import PdfButton from '@/components/PdfButton';
+import { exportDocumentToPDF } from '@/lib/pdfExport';
 
 export default function Production() {
   const { toast } = useToast();
@@ -246,6 +248,39 @@ export default function Production() {
     } catch { toast({ variant: 'destructive', title: 'Gagal' }); }
   };
 
+  const exportProductionPDF = async (row) => {
+    try {
+      const mats = await base44.entities.ProductionMaterial.filter({ production_id: row.id });
+      exportDocumentToPDF({
+        title: row.production_type === 'PREMIX' ? 'Work Order Premix' : 'Work Order Produksi',
+        docNumber: row.production_number, docDate: row.production_date,
+        partyLabel: 'No. Batch', party: { name: row.batch_number },
+        infoLines: [
+          { label: 'Produk', value: row.product_name || row.output_material_name || '-' },
+          { label: 'Merk', value: row.brand_name || '-' },
+          { label: 'Target', value: row.production_type === 'PREMIX' ? `${row.target_quantity || 0} ${row.target_unit || 'gram'}` : `${row.target_volume || 0} ml` },
+          { label: 'Operator', value: row.operator || '-' },
+          { label: 'Status', value: row.status },
+        ],
+        itemColumns: [
+          { key: 'no', header: '#', width: 24, align: 'right' },
+          { key: 'material_name', header: 'Bahan' },
+          { key: 'required_gram', header: 'Standar (g)', width: 85, align: 'right' },
+          { key: 'actual_gram', header: 'Aktual (g)', width: 85, align: 'right' },
+          { key: 'deviation_gram', header: 'Selisih', width: 75, align: 'right' },
+        ],
+        itemRows: mats.map((m, i) => ({ no: i + 1, material_name: m.material_name, required_gram: (m.required_gram || 0).toFixed(2), actual_gram: (m.actual_gram || 0).toFixed(2), deviation_gram: (m.deviation_gram || 0).toFixed(2) })),
+        totals: [
+          { label: 'Total Standar (g)', value: mats.reduce((s, m) => s + (m.required_gram || 0), 0).toFixed(2) },
+          { label: 'Total Aktual (g)', value: mats.reduce((s, m) => s + (m.actual_gram || 0), 0).toFixed(2), bold: true },
+        ],
+        notes: row.notes,
+        signatures: [{ label: 'Operator,', name: row.operator || '' }, { label: 'Disetujui,', name: row.approver || '' }],
+        fileName: `wo-${row.production_number}.pdf`,
+      });
+    } catch { toast({ variant: 'destructive', title: 'Gagal membuat PDF' }); }
+  };
+
   const columns = [
     { key: 'production_number', header: 'No. Produksi', sortable: true, className: 'font-mono font-medium' },
     { key: 'batch_number', header: 'No. Batch', className: 'font-mono' },
@@ -258,6 +293,7 @@ export default function Production() {
       key: 'actions', header: '', width: '100px',
       render: (row) => (
         <div className="flex items-center gap-1">
+          <PdfButton onExport={() => exportProductionPDF(row)} perm="production" iconOnly label="Cetak Work Order" />
           {row.status === 'siap_produksi' && (
             <button onClick={() => openDetail(row)} className="p-1.5 hover:bg-blue-50 rounded text-blue-600" title="Proses"><Play className="w-3.5 h-3.5" /></button>
           )}

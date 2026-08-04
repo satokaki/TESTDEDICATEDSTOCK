@@ -13,6 +13,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import { generatePaymentNumber } from '@/lib/sequence';
 import { createAuditLog } from '@/lib/stockUtils';
 import NumberInput from '@/components/NumberInput';
+import PdfButton from '@/components/PdfButton';
+import { exportDocumentToPDF } from '@/lib/pdfExport';
 
 export default function Payments() {
   const { toast } = useToast();
@@ -128,6 +130,32 @@ export default function Payments() {
 
   const fmtMoney = (v) => 'Rp ' + (v || 0).toLocaleString('id-ID');
 
+  const exportPaymentPDF = async (row) => {
+    try {
+      const allocs = await base44.entities.PaymentAllocation.filter({ payment_id: row.id });
+      exportDocumentToPDF({
+        title: 'Kuitansi Pembayaran',
+        docNumber: row.payment_number, docDate: row.payment_date,
+        partyLabel: 'Diterima dari', party: { name: row.customer_name },
+        infoLines: [
+          { label: 'Metode', value: row.payment_method },
+          { label: 'Kas/Rekening', value: row.cash_account || '-' },
+          { label: 'No. Referensi', value: row.reference_number || '-' },
+        ],
+        itemColumns: [
+          { key: 'no', header: '#', width: 24, align: 'right' },
+          { key: 'invoice_number', header: 'Invoice' },
+          { key: 'allocated_amount', header: 'Alokasi', width: 120, align: 'right' },
+          { key: 'invoice_balance_after', header: 'Sisa Invoice', width: 120, align: 'right' },
+        ],
+        itemRows: allocs.map((a, i) => ({ no: i + 1, invoice_number: a.invoice_number, allocated_amount: fmtMoney(a.allocated_amount), invoice_balance_after: fmtMoney(a.invoice_balance_after) })),
+        totals: [{ label: 'Total Pembayaran', value: fmtMoney(row.total_payment), bold: true }],
+        notes: row.notes,
+        fileName: `kuitansi-${row.payment_number}.pdf`,
+      });
+    } catch { toast({ variant: 'destructive', title: 'Gagal membuat PDF' }); }
+  };
+
   const columns = [
     { key: 'payment_number', header: 'No. Pembayaran', sortable: true, className: 'font-mono font-medium' },
     { key: 'payment_date', header: 'Tanggal', sortable: true },
@@ -136,6 +164,7 @@ export default function Payments() {
     { key: 'payment_method', header: 'Metode', render: (row) => <span className="text-[11px] px-2 py-0.5 bg-muted rounded uppercase">{row.payment_method}</span> },
     { key: 'cash_account', header: 'Kas/Rekening', render: (row) => row.cash_account || '—' },
     { key: 'reference_number', header: 'Ref.', render: (row) => row.reference_number || '—' },
+    { key: 'actions', header: '', width: '56px', render: (row) => <PdfButton onExport={() => exportPaymentPDF(row)} perm="payments" iconOnly label="Cetak Kuitansi" /> },
   ];
 
   return (

@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Pencil, Trash2, Eye, CheckCircle2, XCircle, Download } from 'lucide-react';
 import { postPurchase, cancelPurchase, snapshotItem } from '@/lib/purchaseUtils';
 import { generatePurchaseNumber } from '@/lib/sequence';
+import PdfButton from '@/components/PdfButton';
+import { exportDocumentToPDF } from '@/lib/pdfExport';
 
 const itemTypes = [
   { value: 'material', label: 'Bahan Produksi' },
@@ -311,6 +313,48 @@ export default function Purchases() {
     setDetailItems(items);
   };
 
+  const exportPurchasePDF = async (row) => {
+    try {
+      const items = await base44.entities.PurchaseItem.filter({ purchase_id: row.id });
+      const sup = suppliers.find(s => s.id === row.supplier_id);
+      exportDocumentToPDF({
+        title: 'Purchase Order',
+        docNumber: row.purchase_number, docDate: row.purchase_date,
+        partyLabel: 'Supplier', party: { name: row.supplier_name, address: [sup?.city || ''].filter(Boolean), phone: sup?.phone || '' },
+        infoLines: [
+          { label: 'Inv. Supplier', value: row.supplier_invoice_number || '-' },
+          { label: 'Gudang', value: row.warehouse_name || '-' },
+          { label: 'Metode', value: pmLabel(row.payment_method) },
+          { label: 'Jatuh Tempo', value: row.due_date || '-' },
+          { label: 'Status', value: row.purchase_status },
+        ],
+        itemColumns: [
+          { key: 'no', header: '#', width: 22, align: 'right' },
+          { key: 'item_name', header: 'Item' },
+          { key: 'item_type', header: 'Jenis', width: 70, align: 'center' },
+          { key: 'quantity', header: 'Qty', width: 50, align: 'right' },
+          { key: 'unit', header: 'Sat', width: 40 },
+          { key: 'unit_price', header: 'Harga', width: 80, align: 'right' },
+          { key: 'subtotal', header: 'Subtotal', width: 90, align: 'right' },
+        ],
+        itemRows: items.map((it, i) => ({
+          no: i + 1, item_name: it.item_name, item_type: itLabel(it.item_type),
+          quantity: it.quantity, unit: it.unit || '', unit_price: fmtMoney(it.unit_price), subtotal: fmtMoney(it.subtotal),
+        })),
+        totals: [
+          { label: 'Subtotal', value: fmtMoney(row.subtotal) },
+          ...(row.discount ? [{ label: 'Diskon', value: fmtMoney(row.discount) }] : []),
+          ...(row.tax ? [{ label: 'Pajak', value: fmtMoney(row.tax) }] : []),
+          ...(row.additional_cost ? [{ label: 'Biaya Tambahan', value: fmtMoney(row.additional_cost) }] : []),
+          { label: 'Total', value: fmtMoney(row.total), bold: true },
+        ],
+        notes: row.notes,
+        signatures: [{ label: 'Dibuat oleh,', name: row.created_by || '' }, { label: 'Disetujui oleh,', name: row.posted_by || '' }],
+        fileName: `po-${row.purchase_number}.pdf`,
+      });
+    } catch { toast({ type: 'error', title: 'Gagal membuat PDF' }); }
+  };
+
   const handleExport = () => {
     const rows = filteredData.map(r => ({
       'No Pembelian': r.purchase_number, 'Tanggal': r.purchase_date, 'Supplier': r.supplier_name,
@@ -351,6 +395,7 @@ export default function Purchases() {
       render: (row) => (
         <div className="flex items-center gap-1">
           <button onClick={() => openDetail(row)} className="p-1.5 hover:bg-muted rounded" title="Detail"><Eye className="w-3.5 h-3.5" /></button>
+          <PdfButton onExport={() => exportPurchasePDF(row)} perm="purchases" iconOnly label="Cetak PDF" />
           {row.purchase_status === 'draft' && (
             <>
               <button onClick={() => openEdit(row)} className="p-1.5 hover:bg-muted rounded" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
