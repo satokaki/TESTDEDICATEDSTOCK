@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Play, CheckCircle, AlertTriangle, X } from 'lucide-react';
 import { calculateRecipe } from '@/lib/recipeCalculator';
+import { calculatePremixQuantities } from '@/lib/premix';
 import { generateProductionNumber, generateBatchNumber } from '@/lib/sequence';
 import { recordStockMovement, getStockBalance, createAuditLog } from '@/lib/stockUtils';
 
@@ -46,25 +47,62 @@ export default function Production() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const calculateMaterials = useCallback(async (recipeId, targetVolume) => {
-    if (!recipeId || !targetVolume) return;
+  const calculateMaterials = useCallback(async (recipeId, targetValue) => {
+    if (!recipeId || !targetValue) return;
     const recipe = recipes.find(r => r.id === recipeId);
     if (!recipe) return;
     const ingredients = await base44.entities.RecipeIngredient.filter({ recipe_id: recipeId });
-    const result = calculateRecipe({
-      ingredients: ingredients.map(i => ({ ...i })),
-      targetVolume: Number(targetVolume),
-      targetNicotine: recipe.target_nicotine,
-      targetPG: recipe.target_pg,
-      targetVG: recipe.target_vg,
-      nicotineBaseStrength: ingredients.find(i => i.material_type === 'nicotine')?.nicotine_strength || 100,
-    });
-    // Check stock
-    const stockChecks = await Promise.all(result.items.map(async (item) => {
+    const matsById = Object.fromEntries(materials.map(m => [m.id, m]));
+    const isPremix = recipe.recipe_type === 'PREMIX';
+    const basis = recipe.calculation_basis || 'W_W';
+    const targetQty = Number(targetValue);
+
+    let items = [];
+    if (isPremix) {
+      // Premix engine: gram = target × persentase / 100 (W/W). Tidak ada penyeimbangan PG/VG.
+      const calc = calculatePremixQuantities({ ingredients, targetQuantity: targetQty, basis, materialsById: matsById });
+      items = calc.map(c => ({
+        material_id: c.material_id,
+        material_name: c.material_name,
+        material_type: c.material_type,
+        percentage: Number(c.percentage || 0),
+        volumeMl: Number(c.ml || 0),
+        gram: Number(c.gram || 0),
+      }));
+    } else {
+      const result = calculateRecipe({
+        ingredients: ingredients.map(i => ({ ...i })),
+        targetVolume: targetQty,
+        targetNicotine: recipe.target_nicotine,
+        targetPG: recipe.target_pg,
+        targetVG: recipe.target_vg,
+        nicotineBaseStrength: ingredients.find(i => i.material_type === 'nicotine')?.nicotine_strength || 100,
+      });
+      items = result.items;
+    }
+
+    // Stock check — kebutuhan selalu dalam gram; konversi stok ml→gram via density bila perlu
+    const stockChecks = await Promise.all(items.map(async (item) => {
       const mat = materials.find(m => m.id === item.material_id);
-      const stock = await getStockBalance(item.material_id, 'material');
-      const requiredGram = item.gram || 0;
-      return { ...item, material_name: mat?.name || item.material_name, material_id: item.material_id, stockAvailable: stock, stockSufficient: stock >= requiredGram, requiredGram, requiredMl: item.volumeMl };
+      const stockRaw = await getStockBalance(item.material_id, 'material');
+      const density = mat?.density || mat?.default_density || 0;
+      const matUnit = mat?.unit || 'gram';
+      const requiredGram = Number(item.gram || 0);
+      let stockGram = stockRaw;
+      if (isPremix && matUnit === 'mililiter' && density > 0) {
+        stockGram = stockRaw * density;
+      }
+      return {
+        ...item,
+        material_name: mat?.name || item.material_name,
+        material_id: item.material_id,
+        stockAvailable: stockGram,
+        stockAvailableRaw: stockRaw,
+        stockUnit: matUnit,
+        stockSufficient: stockGram >= requiredGram,
+        requiredGram,
+        requiredMl: item.volumeMl || 0,
+      };
     }));
     setCalcItems(stockChecks);
     setStockCheck(stockChecks);
@@ -96,24 +134,41 @@ export default function Production() {
 
   const handleSubmit = async () => {
     if (!form.recipe_id || !form.target_volume || !form.operator) { toast({ variant: 'destructive', title: 'Resep, volume, dan operator wajib diisi' }); return; }
+    const recipe = recipes.find(r => r.id === form.recipe_id);
+    // Bug 4 — validasi total komposisi 100% untuk premix
+    if (recipe?.recipe_type === 'PREMIX') {
+      const totalPct = stockCheck.reduce((s, i) => s + Number(i.percentage || 0), 0);
+      if (Math.abs(totalPct - 100) > 0.1) {
+        toast({ variant: 'destructive', title: 'Komposisi Recipe tidak valid', description: 'Total bahan harus 100%.' });
+        return;
+      }
+    }
     const insufficient = stockCheck.filter(s => !s.stockSufficient);
     if (insufficient.length > 0) {
-      toast({ variant: 'destructive', title: 'Stok tidak mencukupi', description: insufficient.map(s => `${s.material_name}: butuh ${s.requiredGram.toFixed(1)}g, tersedia ${s.stockAvailable}`).join(', ') });
+      toast({ variant: 'destructive', title: 'Stok tidak mencukupi', description: insufficient.map(s => `${s.material_name}: butuh ${s.requiredGram.toFixed(1)}g, tersedia ${s.stockAvailable.toFixed(1)}g`).join(', ') });
       return;
     }
     setSubmitting(true);
     try {
-      const recipe = recipes.find(r => r.id === form.recipe_id);
       const prdNumber = await generateProductionNumber();
       const batchNumber = await generateBatchNumber(recipe?.brand_name?.substring(0, 3) || 'GEN');
+      const isPremix = recipe.recipe_type === 'PREMIX';
+      const outputMaterial = isPremix ? materials.find(m => m.id === recipe.output_material_id) : null;
       const production = await base44.entities.ProductionOrder.create({
         production_number: prdNumber,
         batch_number: batchNumber,
         production_date: form.production_date,
         recipe_id: recipe.id, recipe_code: recipe.code, recipe_version: recipe.version,
+        recipe_type: recipe.recipe_type || 'FINISHED_PRODUCT',
+        production_type: recipe.recipe_type || 'FINISHED_PRODUCT',
+        calculation_basis: recipe.calculation_basis || 'W_W',
         product_id: recipe.product_id || '', product_name: recipe.product_name || '',
+        output_material_id: isPremix ? (recipe.output_material_id || '') : '',
+        output_material_name: outputMaterial?.name || recipe.output_material_name || '',
         brand_id: recipe.brand_id, brand_name: recipe.brand_name,
-        target_volume: Number(form.target_volume),
+        target_volume: isPremix ? 0 : Number(form.target_volume),
+        target_quantity: isPremix ? Number(form.target_volume) : 0,
+        target_unit: isPremix ? (recipe.calculation_basis === 'W_W' ? 'gram' : 'mililiter') : 'mililiter',
         actual_volume: 0,
         operator: form.operator, approver: '',
         status: 'siap_produksi',
@@ -195,7 +250,7 @@ export default function Production() {
     { key: 'batch_number', header: 'No. Batch', className: 'font-mono' },
     { key: 'product_name', header: 'Produk', render: (row) => row.product_name || '—' },
     { key: 'brand_name', header: 'Merk', render: (row) => row.brand_name || '—' },
-    { key: 'target_volume', header: 'Target', render: (row) => `${row.target_volume} ml` },
+    { key: 'target', header: 'Target', render: (row) => row.production_type === 'PREMIX' ? `${row.target_quantity || 0} ${row.target_unit || 'gram'}` : `${row.target_volume || 0} ml` },
     { key: 'operator', header: 'Operator', render: (row) => row.operator || '—' },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
     {
@@ -219,6 +274,14 @@ export default function Production() {
     },
   ];
 
+  const selectedRecipe = recipes.find(r => r.id === form.recipe_id);
+  const isPremix = selectedRecipe?.recipe_type === 'PREMIX';
+  const basis = selectedRecipe?.calculation_basis || 'W_W';
+  const targetUnit = isPremix ? (basis === 'W_W' ? 'Gram' : 'ml') : 'ml';
+  const targetLabel = isPremix ? `Target Produksi (${targetUnit}) *` : 'Target Volume (ml) *';
+  const totalFormulaPct = stockCheck.reduce((s, i) => s + Number(i.percentage || 0), 0);
+  const totalRequirement = stockCheck.reduce((s, i) => s + Number(i.gram || 0), 0);
+
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
       <PageHeader title="Produksi" description="Buat batch produksi dari resep approved"
@@ -235,11 +298,26 @@ export default function Production() {
               <SelectContent>{recipes.map(r => <SelectItem key={r.id} value={r.id}>{r.code} · {r.name} (v{r.version})</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div><Label className="text-[12.5px] mb-1">Target Volume (ml) *</Label><Input type="number" value={form.target_volume} onChange={e => setForm({ ...form, target_volume: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">{targetLabel}</Label><Input type="number" value={form.target_volume} onChange={e => setForm({ ...form, target_volume: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Tanggal Produksi</Label><Input type="date" value={form.production_date} onChange={e => setForm({ ...form, production_date: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Operator *</Label><Input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Catatan</Label><Input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="h-9 text-[13px]" /></div>
         </div>
+
+        {/* Production Preview (Bug 6) */}
+        {selectedRecipe && stockCheck.length > 0 && (
+          <div className="border-t pt-3 mt-2">
+            <Label className="text-[12.5px] font-semibold mb-2 block">Ringkasan Produksi</Label>
+            <div className="grid grid-cols-3 gap-2 text-[11.5px]">
+              <div className="bg-muted/40 rounded px-2 py-1.5">Recipe Type: <b>{isPremix ? 'PREMIX' : 'FINISHED_PRODUCT'}</b></div>
+              <div className="bg-muted/40 rounded px-2 py-1.5">Calculation Basis: <b>{isPremix ? basis : '—'}</b></div>
+              <div className="bg-muted/40 rounded px-2 py-1.5">Target Produksi: <b>{Number(form.target_volume || 0).toLocaleString('id-ID')} {targetUnit}</b></div>
+              <div className="bg-muted/40 rounded px-2 py-1.5">Satuan: <b>{isPremix ? (basis === 'W_W' ? 'Gram' : 'ml') : 'ml'}</b></div>
+              <div className="bg-muted/40 rounded px-2 py-1.5">Total Formula: <b>{totalFormulaPct.toFixed(2)}%</b></div>
+              <div className="bg-muted/40 rounded px-2 py-1.5">Total Kebutuhan: <b>{totalRequirement.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} gram</b></div>
+            </div>
+          </div>
+        )}
 
         {/* Stock Check */}
         {stockCheck.length > 0 && (
@@ -252,7 +330,7 @@ export default function Production() {
                   <th className="px-2 py-1 text-right">Persentase</th>
                   <th className="px-2 py-1 text-right">Kebutuhan (ml)</th>
                   <th className="px-2 py-1 text-right">Kebutuhan (gram)</th>
-                  <th className="px-2 py-1 text-right">Stok Tersedia</th>
+                  <th className="px-2 py-1 text-right">Stok Tersedia{isPremix ? ' (gram)' : ''}</th>
                   <th className="px-2 py-1 text-center">Status</th>
                 </tr></thead>
                 <tbody>
@@ -279,7 +357,7 @@ export default function Production() {
 
       {/* Detail / Actual Weighing Modal */}
       <FormModal open={detailOpen} onClose={() => setDetailOpen(false)} title={`Timbang Aktual · ${editing?.production_number || ''}`} onSubmit={handlePost} submitting={submitting} submitLabel="Posting Produksi" size="lg">
-        <div className="text-[12px] text-muted-foreground mb-3">Batch: <b>{editing?.batch_number}</b> · Target: <b>{editing?.target_volume} ml</b></div>
+        <div className="text-[12px] text-muted-foreground mb-3">Batch: <b>{editing?.batch_number}</b> · Target: <b>{editing?.production_type === 'PREMIX' ? `${editing?.target_quantity || 0} ${editing?.target_unit || 'gram'}` : `${editing?.target_volume || 0} ml`}</b></div>
         <div className="overflow-x-auto">
           <table className="w-full text-[11.5px]">
             <thead><tr className="bg-muted/40 text-muted-foreground">
