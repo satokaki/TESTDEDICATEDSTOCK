@@ -4,24 +4,27 @@ import { base44 } from '@/api/base44Client';
 import {
   LayoutDashboard, FlaskConical, Factory, Package, Tag, Stamp,
   ShoppingCart, Wallet, ClipboardList, FileBarChart, Database,
-  Settings, ChevronDown, Menu, X, LogOut, Bell, Search
+  Settings, ChevronDown, Menu, X, LogOut, Bell, Search, UserCog
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/AuthContext';
+import { hasPermission } from '@/lib/permissions';
+import { roleLabel } from '@/lib/roles';
 
 const menuItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/', group: 'utama' },
-  { label: 'Resep', icon: FlaskConical, path: '/recipes', group: 'operasional' },
-  { label: 'Produksi', icon: Factory, path: '/production', group: 'operasional' },
-  { label: 'Bottling', icon: Package, path: '/bottling', group: 'operasional' },
-  { label: 'Labeling', icon: Tag, path: '/labeling', group: 'operasional' },
-  { label: 'Proses Cukai', icon: Stamp, path: '/excise', group: 'operasional' },
-  { label: 'Pembelian', icon: Package, path: '/purchases', group: 'operasional' },
-  { label: 'Penjualan', icon: ShoppingCart, path: '/sales', group: 'operasional' },
-  { label: 'Pembayaran Piutang', icon: Wallet, path: '/payments', group: 'operasional' },
-  { label: 'Kartu Stok', icon: ClipboardList, path: '/stock-card', group: 'operasional' },
-  { label: 'Laporan Penjualan', icon: FileBarChart, path: '/reports/sales', group: 'laporan' },
-  { label: 'Laporan Piutang', icon: FileBarChart, path: '/reports/receivables', group: 'laporan' },
-  { label: 'Traceability Batch', icon: Search, path: '/traceability', group: 'laporan' },
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/', group: 'utama', perm: 'dashboard' },
+  { label: 'Resep', icon: FlaskConical, path: '/recipes', group: 'operasional', perm: 'recipes' },
+  { label: 'Produksi', icon: Factory, path: '/production', group: 'operasional', perm: 'production' },
+  { label: 'Bottling', icon: Package, path: '/bottling', group: 'operasional', perm: 'bottling' },
+  { label: 'Labeling', icon: Tag, path: '/labeling', group: 'operasional', perm: 'labeling' },
+  { label: 'Proses Cukai', icon: Stamp, path: '/excise', group: 'operasional', perm: 'excise' },
+  { label: 'Pembelian', icon: Package, path: '/purchases', group: 'operasional', perm: 'purchases' },
+  { label: 'Penjualan', icon: ShoppingCart, path: '/sales', group: 'operasional', perm: 'sales' },
+  { label: 'Pembayaran Piutang', icon: Wallet, path: '/payments', group: 'operasional', perm: 'payments' },
+  { label: 'Kartu Stok', icon: ClipboardList, path: '/stock-card', group: 'operasional', perm: 'stock_card' },
+  { label: 'Laporan Penjualan', icon: FileBarChart, path: '/reports/sales', group: 'laporan', perm: 'report_sales' },
+  { label: 'Laporan Piutang', icon: FileBarChart, path: '/reports/receivables', group: 'laporan', perm: 'report_receivables' },
+  { label: 'Traceability Batch', icon: Search, path: '/traceability', group: 'laporan', perm: 'traceability' },
 ];
 
 const masterItems = [
@@ -37,6 +40,7 @@ const masterItems = [
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [masterOpen, setMasterOpen] = useState(
     location.pathname.startsWith('/master')
@@ -50,6 +54,9 @@ export default function Layout() {
     if (path === '/') return location.pathname === '/';
     return location.pathname.startsWith(path);
   };
+
+  const canSee = (perm) => hasPermission(user, perm, 'view');
+  const filteredMenu = (group) => menuItems.filter((i) => i.group === group && canSee(i.perm));
 
   const NavLink = ({ item }) => {
     const Icon = item.icon;
@@ -69,6 +76,8 @@ export default function Layout() {
       </Link>
     );
   };
+
+  const initial = (user?.full_name || user?.email || 'A').charAt(0).toUpperCase();
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
@@ -92,55 +101,82 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-0.5">
-          {menuItems.filter(i => i.group === 'utama').map(item => <NavLink key={item.path} item={item} />)}
+          {filteredMenu('utama').map((item) => <NavLink key={item.path} item={item} />)}
 
-          <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Operasional</div>
-          {menuItems.filter(i => i.group === 'operasional').map(item => <NavLink key={item.path} item={item} />)}
+          {filteredMenu('operasional').length > 0 && (
+            <>
+              <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Operasional</div>
+              {filteredMenu('operasional').map((item) => <NavLink key={item.path} item={item} />)}
+            </>
+          )}
 
-          <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Laporan</div>
-          {menuItems.filter(i => i.group === 'laporan').map(item => <NavLink key={item.path} item={item} />)}
+          {filteredMenu('laporan').length > 0 && (
+            <>
+              <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Laporan</div>
+              {filteredMenu('laporan').map((item) => <NavLink key={item.path} item={item} />)}
+            </>
+          )}
 
-          <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Master Data</div>
-          <button
-            onClick={() => setMasterOpen(!masterOpen)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-          >
-            <Database className="w-4 h-4 shrink-0" />
-            <span className="flex-1 text-left">Master Data</span>
-            <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', masterOpen && 'rotate-180')} />
-          </button>
-          {masterOpen && (
-            <div className="space-y-0.5 pl-4">
-              {masterItems.map(item => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setSidebarOpen(false)}
-                  className={cn(
-                    'flex items-center gap-2 px-3 py-1.5 rounded-md text-[12.5px] transition-colors',
-                    isActive(item.path)
-                      ? 'bg-primary/10 text-primary font-semibold'
-                      : 'text-sidebar-foreground/80 hover:bg-sidebar-accent'
-                  )}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
+          {canSee('master') && (
+            <>
+              <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Master Data</div>
+              <button
+                onClick={() => setMasterOpen(!masterOpen)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              >
+                <Database className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Master Data</span>
+                <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', masterOpen && 'rotate-180')} />
+              </button>
+              {masterOpen && (
+                <div className="space-y-0.5 pl-4">
+                  {masterItems.map((item) => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setSidebarOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2 px-3 py-1.5 rounded-md text-[12.5px] transition-colors',
+                        isActive(item.path)
+                          ? 'bg-primary/10 text-primary font-semibold'
+                          : 'text-sidebar-foreground/80 hover:bg-sidebar-accent'
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Sistem</div>
-          <Link
-            to="/settings"
-            onClick={() => setSidebarOpen(false)}
-            className={cn(
-              'flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors',
-              isActive('/settings') ? 'bg-primary text-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent'
-            )}
-          >
-            <Settings className="w-4 h-4 shrink-0" />
-            <span>Pengaturan</span>
-          </Link>
+          {canSee('users') && (
+            <Link
+              to="/users"
+              onClick={() => setSidebarOpen(false)}
+              className={cn(
+                'flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors',
+                isActive('/users') ? 'bg-primary text-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent'
+              )}
+            >
+              <UserCog className="w-4 h-4 shrink-0" />
+              <span>Pengguna & Akses</span>
+            </Link>
+          )}
+          {canSee('settings') && (
+            <Link
+              to="/settings"
+              onClick={() => setSidebarOpen(false)}
+              className={cn(
+                'flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors',
+                isActive('/settings') ? 'bg-primary text-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent'
+              )}
+            >
+              <Settings className="w-4 h-4 shrink-0" />
+              <span>Pengaturan</span>
+            </Link>
+          )}
         </nav>
       </aside>
 
@@ -177,10 +213,10 @@ export default function Layout() {
 
           <div className="flex items-center gap-2.5 pl-3 border-l border-border">
             <div className="text-right hidden sm:block">
-              <div className="text-[12.5px] font-semibold leading-none">Administrator</div>
-              <div className="text-[10.5px] text-muted-foreground mt-0.5">Admin</div>
+              <div className="text-[12.5px] font-semibold leading-none">{user?.full_name || 'Pengguna'}</div>
+              <div className="text-[10.5px] text-muted-foreground mt-0.5">{roleLabel(user?.role)}</div>
             </div>
-            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[12px] font-bold">A</div>
+            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[12px] font-bold">{initial}</div>
             <button onClick={handleLogout} className="p-2 hover:bg-muted rounded-md" title="Logout">
               <LogOut className="w-4 h-4 text-muted-foreground" />
             </button>

@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { generateWarehouseCode } from '@/lib/sequence';
 
 const warehouseTypes = [
   { value: 'gudang_bahan', label: 'Gudang Bahan' },
@@ -47,11 +48,11 @@ export default function Warehouses() {
   const openEdit = (item) => { setEditing(item); setForm({ code: item.code, name: item.name, warehouse_type: item.warehouse_type, is_active: item.is_active, notes: item.notes || '' }); setModalOpen(true); };
 
   const handleSubmit = async () => {
-    if (!form.code || !form.name) { toast({ variant: 'destructive', title: 'Kode dan nama wajib diisi' }); return; }
+    if (!form.name) { toast({ variant: 'destructive', title: 'Nama wajib diisi' }); return; }
     setSubmitting(true);
     try {
       if (editing) { await base44.entities.Warehouse.update(editing.id, form); toast({ title: 'Gudang diperbarui' }); }
-      else { await base44.entities.Warehouse.create(form); toast({ title: 'Gudang ditambahkan' }); }
+      else { const code = await generateWarehouseCode(); await base44.entities.Warehouse.create({ ...form, code }); toast({ title: 'Gudang ditambahkan' }); }
       setModalOpen(false); loadData();
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
     finally { setSubmitting(false); }
@@ -92,7 +93,7 @@ export default function Warehouses() {
       <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada gudang" searchKeys={['code', 'name']} searchPlaceholder="Cari gudang..." />
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Gudang' : 'Tambah Gudang'} onSubmit={handleSubmit} submitting={submitting}>
         <div className="grid grid-cols-2 gap-3">
-          <div><Label className="text-[12.5px] mb-1">Kode Gudang *</Label><Input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="h-9 text-[13px]" disabled={!!editing} /></div>
+          <div><Label className="text-[12.5px] mb-1">Kode Gudang</Label><Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly /></div>
           <div>
             <Label className="text-[12.5px] mb-1">Jenis Gudang</Label>
             <Select value={form.warehouse_type} onValueChange={v => setForm({ ...form, warehouse_type: v })}>

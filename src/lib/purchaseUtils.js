@@ -1,44 +1,8 @@
 import { base44 } from '@/api/base44Client';
 import { recordStockMovement, createAuditLog } from '@/lib/stockUtils';
+import { generatePurchaseNumber, generatePayableNumber } from '@/lib/sequence';
 
-/**
- * Generate unique purchase number: PO-YYYYMM-00001
- */
-export async function generatePurchaseNumber() {
-  const now = new Date();
-  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const sequenceKey = `PURCHASE-${ym}`;
-  const existing = await base44.entities.DocumentSequence.filter({ sequence_key: sequenceKey });
-  let nextNumber;
-  if (existing.length > 0) {
-    nextNumber = existing[0].last_number + 1;
-    await base44.entities.DocumentSequence.update(existing[0].id, { last_number: nextNumber });
-  } else {
-    nextNumber = 1;
-    await base44.entities.DocumentSequence.create({
-      sequence_key: sequenceKey, prefix: 'PO', year: now.getFullYear(), last_number: nextNumber,
-    });
-  }
-  return `PO-${ym}-${String(nextNumber).padStart(5, '0')}`;
-}
-
-export async function generatePayableNumber() {
-  const now = new Date();
-  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const sequenceKey = `PAYABLE-${ym}`;
-  const existing = await base44.entities.DocumentSequence.filter({ sequence_key: sequenceKey });
-  let nextNumber;
-  if (existing.length > 0) {
-    nextNumber = existing[0].last_number + 1;
-    await base44.entities.DocumentSequence.update(existing[0].id, { last_number: nextNumber });
-  } else {
-    nextNumber = 1;
-    await base44.entities.DocumentSequence.create({
-      sequence_key: sequenceKey, prefix: 'AP', year: now.getFullYear(), last_number: nextNumber,
-    });
-  }
-  return `AP-${ym}-${String(nextNumber).padStart(5, '0')}`;
-}
+export { generatePurchaseNumber, generatePayableNumber };
 
 const toNum = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
 

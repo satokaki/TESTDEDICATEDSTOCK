@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import NumberInput from '@/components/NumberInput';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { generateMaterialCode } from '@/lib/sequence';
 
 const materialCategories = [
   { value: 'flavor', label: 'Flavor' },
@@ -62,7 +63,7 @@ export default function Materials() {
   };
 
   const handleSubmit = async () => {
-    if (!form.code || !form.name) { toast({ variant: 'destructive', title: 'Kode dan nama wajib diisi' }); return; }
+    if (!form.name) { toast({ variant: 'destructive', title: 'Nama wajib diisi' }); return; }
     setSubmitting(true);
     try {
       const cat = categories.find(c => c.id === form.category_id);
@@ -79,7 +80,7 @@ export default function Materials() {
         supplier_name: sup?.name || '',
       };
       if (editing) { await base44.entities.Material.update(editing.id, payload); toast({ title: 'Bahan diperbarui' }); }
-      else { await base44.entities.Material.create(payload); toast({ title: 'Bahan ditambahkan' }); }
+      else { const code = await generateMaterialCode(); await base44.entities.Material.create({ ...payload, code }); toast({ title: 'Bahan ditambahkan' }); }
       setModalOpen(false); loadData();
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
     finally { setSubmitting(false); }
@@ -122,7 +123,7 @@ export default function Materials() {
       <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada bahan" searchKeys={['code', 'name']} searchPlaceholder="Cari bahan..." />
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Bahan' : 'Tambah Bahan'} onSubmit={handleSubmit} submitting={submitting} size="lg">
         <div className="grid grid-cols-2 gap-3">
-          <div><Label className="text-[12.5px] mb-1">Kode Bahan *</Label><Input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="h-9 text-[13px]" disabled={!!editing} /></div>
+          <div><Label className="text-[12.5px] mb-1">Kode Bahan</Label><Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly /></div>
           <div><Label className="text-[12.5px] mb-1">Nama Bahan *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9 text-[13px]" /></div>
           <div>
             <Label className="text-[12.5px] mb-1">Kategori</Label>

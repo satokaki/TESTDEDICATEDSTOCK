@@ -28,6 +28,7 @@ import Customers from '@/pages/Customers';
 import Materials from '@/pages/Materials';
 import Products from '@/pages/Products';
 import Warehouses from '@/pages/Warehouses';
+import Users from '@/pages/Users';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -70,6 +71,7 @@ const AuthenticatedApp = () => {
         <Route path="/reports/receivables" element={<ReceivablesReport />} />
         <Route path="/traceability" element={<BatchTraceability />} />
         <Route path="/settings" element={<Settings />} />
+      <Route path="/users" element={<Users />} />
         <Route path="/master/brands" element={<Brands />} />
         <Route path="/master/categories" element={<Categories />} />
         <Route path="/master/suppliers" element={<Suppliers />} />

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Pencil, Copy, CheckCircle, Trash2, Calculator, X } from 'lucide-react';
 import { calculateRecipe } from '@/lib/recipeCalculator';
 import { createAuditLog } from '@/lib/stockUtils';
+import { generateRecipeCode } from '@/lib/sequence';
 
 export default function Recipes() {
   const { toast } = useToast();
@@ -74,7 +75,7 @@ export default function Recipes() {
   const openAdd = () => {
     setEditing(null);
     setForm({
-      code: `RCP-${Date.now().toString().slice(-5)}`, name: '', brand_id: '', product_id: '',
+      code: '', name: '', brand_id: '', product_id: '',
       target_volume: 1000, target_nicotine: 3, target_pg: 40, target_vg: 60,
       status: 'draft', notes: '', ingredients: [],
     });
@@ -128,8 +129,10 @@ export default function Recipes() {
       const brand = brands.find(b => b.id === form.brand_id);
       const product = products.find(p => p.id === form.product_id);
       const totalFlavor = form.ingredients.filter(i => i.material_type === 'flavor').reduce((s, i) => s + Number(i.percentage), 0);
+      let recipeCode = form.code;
+      if (!editing) recipeCode = await generateRecipeCode();
       const payload = {
-        code: form.code, name: form.name,
+        code: recipeCode, name: form.name,
         brand_id: form.brand_id, brand_name: brand?.name || '',
         product_id: form.product_id, product_name: product?.name || '',
         version: editing?.version || 1,
@@ -159,7 +162,7 @@ export default function Recipes() {
         percentage: Number(i.percentage), density: Number(i.density), pg_content: Number(i.pg_content), vg_content: Number(i.vg_content),
         nicotine_strength: Number(i.nicotine_strength), mix_order: i.mix_order || 0, notes: i.notes || '',
       })));
-      await createAuditLog({ module: 'Resep', action: editing ? 'Edit' : 'Tambah', entity_type: 'Recipe', entity_id: recipeId, reference_number: form.code });
+      await createAuditLog({ module: 'Resep', action: editing ? 'Edit' : 'Tambah', entity_type: 'Recipe', entity_id: recipeId, reference_number: recipeCode });
       toast({ title: editing ? 'Resep diperbarui' : 'Resep dibuat' });
       setModalOpen(false); loadData();
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
@@ -179,8 +182,9 @@ export default function Recipes() {
   const handleDuplicate = async (item) => {
     try {
       const ingredients = await base44.entities.RecipeIngredient.filter({ recipe_id: item.id });
+      const dupCode = await generateRecipeCode();
       const newRecipe = await base44.entities.Recipe.create({
-        ...item, code: `RCP-${Date.now().toString().slice(-5)}`, name: `${item.name} (Copy)`,
+        ...item, code: dupCode, name: `${item.name} (Copy)`,
         status: 'draft', version: 1, id: undefined, approved_by: '', approval_date: '',
       });
       await base44.entities.RecipeIngredient.bulkCreate(ingredients.map(i => ({ ...i, recipe_id: newRecipe.id, id: undefined })));
@@ -224,7 +228,7 @@ export default function Recipes() {
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Resep' : 'Tambah Resep'} onSubmit={handleSubmit} submitting={submitting} submitLabel="Simpan Resep" size="xl">
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2"><Label className="text-[12.5px] mb-1">Nama Resep *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Kode</Label><Input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="h-9 text-[13px] font-mono" /></div>
+          <div><Label className="text-[12.5px] mb-1">Kode</Label><Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly /></div>
           <div>
             <Label className="text-[12.5px] mb-1">Merk *</Label>
             <Select value={form.brand_id} onValueChange={v => setForm({ ...form, brand_id: v })}>

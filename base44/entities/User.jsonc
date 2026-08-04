@@ -10,9 +10,22 @@
       ],
       "default": "user"
     },
+    "user_code": {
+      "type": "string",
+      "description": "Kode pengguna (auto: USR-00001)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suspended"
+      ],
+      "default": "active",
+      "description": "Status akses pengguna"
+    },
     "permissions": {
       "type": "object",
-      "description": "Hak akses kustom per menu/aksi (JSON)"
+      "description": "Matriks hak akses per menu/aksi"
     }
   }
 }

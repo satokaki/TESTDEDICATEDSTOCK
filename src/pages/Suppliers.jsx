@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { generateSupplierCode } from '@/lib/sequence';
 
 export default function Suppliers() {
   const { toast } = useToast();
@@ -35,11 +36,11 @@ export default function Suppliers() {
   const openEdit = (item) => { setEditing(item); setForm({ code: item.code, name: item.name, contact_person: item.contact_person || '', phone: item.phone || '', email: item.email || '', address: item.address || '', city: item.city || '', is_active: item.is_active, notes: item.notes || '' }); setModalOpen(true); };
 
   const handleSubmit = async () => {
-    if (!form.code || !form.name) { toast({ variant: 'destructive', title: 'Kode dan nama wajib diisi' }); return; }
+    if (!form.name) { toast({ variant: 'destructive', title: 'Nama wajib diisi' }); return; }
     setSubmitting(true);
     try {
       if (editing) { await base44.entities.Supplier.update(editing.id, form); toast({ title: 'Supplier diperbarui' }); }
-      else { await base44.entities.Supplier.create(form); toast({ title: 'Supplier ditambahkan' }); }
+      else { const code = await generateSupplierCode(); await base44.entities.Supplier.create({ ...form, code }); toast({ title: 'Supplier ditambahkan' }); }
       setModalOpen(false); loadData();
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
     finally { setSubmitting(false); }
@@ -81,7 +82,7 @@ export default function Suppliers() {
       <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada supplier" searchKeys={['code', 'name', 'contact_person', 'city']} searchPlaceholder="Cari supplier..." />
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Supplier' : 'Tambah Supplier'} onSubmit={handleSubmit} submitting={submitting}>
         <div className="grid grid-cols-2 gap-3">
-          <div><Label className="text-[12.5px] mb-1">Kode Supplier *</Label><Input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="h-9 text-[13px]" disabled={!!editing} /></div>
+          <div><Label className="text-[12.5px] mb-1">Kode Supplier</Label><Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly /></div>
           <div><Label className="text-[12.5px] mb-1">Nama Supplier *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Kontak Person</Label><Input value={form.contact_person} onChange={e => setForm({ ...form, contact_person: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Telepon</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="h-9 text-[13px]" /></div>

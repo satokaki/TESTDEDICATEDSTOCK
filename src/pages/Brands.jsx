@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
+import { generateBrandCode } from '@/lib/sequence';
 
 export default function Brands() {
   const { toast } = useToast();
@@ -48,8 +49,8 @@ export default function Brands() {
   };
 
   const handleSubmit = async () => {
-    if (!form.code || !form.name) {
-      toast({ variant: 'destructive', title: 'Kode dan nama wajib diisi' });
+    if (!form.name) {
+      toast({ variant: 'destructive', title: 'Nama wajib diisi' });
       return;
     }
     setSubmitting(true);
@@ -58,7 +59,8 @@ export default function Brands() {
         await base44.entities.Brand.update(editing.id, form);
         toast({ title: 'Merk berhasil diperbarui' });
       } else {
-        await base44.entities.Brand.create(form);
+        const code = await generateBrandCode();
+        await base44.entities.Brand.create({ ...form, code });
         toast({ title: 'Merk berhasil ditambahkan' });
       }
       setModalOpen(false);
@@ -140,8 +142,8 @@ export default function Brands() {
       >
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-[12.5px] mb-1">Kode Merk *</Label>
-            <Input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="h-9 text-[13px]" disabled={!!editing} />
+            <Label className="text-[12.5px] mb-1">Kode Merk</Label>
+            <Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly />
           </div>
           <div>
             <Label className="text-[12.5px] mb-1">Nama Merk *</Label>

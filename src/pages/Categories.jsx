@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { generateCategoryCode } from '@/lib/sequence';
 
 const categoryTypes = [
   { value: 'bahan', label: 'Bahan' },
@@ -58,8 +59,8 @@ export default function Categories() {
   };
 
   const handleSubmit = async () => {
-    if (!form.code || !form.name) {
-      toast({ variant: 'destructive', title: 'Kode dan nama wajib diisi' });
+    if (!form.name) {
+      toast({ variant: 'destructive', title: 'Nama wajib diisi' });
       return;
     }
     setSubmitting(true);
@@ -68,7 +69,8 @@ export default function Categories() {
         await base44.entities.Category.update(editing.id, form);
         toast({ title: 'Kategori diperbarui' });
       } else {
-        await base44.entities.Category.create(form);
+        const code = await generateCategoryCode();
+        await base44.entities.Category.create({ ...form, code });
         toast({ title: 'Kategori ditambahkan' });
       }
       setModalOpen(false);
@@ -121,8 +123,8 @@ export default function Categories() {
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Kategori' : 'Tambah Kategori'} onSubmit={handleSubmit} submitting={submitting}>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-[12.5px] mb-1">Kode Kategori *</Label>
-            <Input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="h-9 text-[13px]" disabled={!!editing} />
+            <Label className="text-[12.5px] mb-1">Kode Kategori</Label>
+            <Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly />
           </div>
           <div>
             <Label className="text-[12.5px] mb-1">Jenis Kategori *</Label>
