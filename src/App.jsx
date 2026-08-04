@@ -33,6 +33,9 @@ import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
+import NoAccess from '@/pages/NoAccess';
+import LandingRedirect from '@/components/LandingRedirect';
+import PermissionGuard from '@/components/PermissionGuard';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -61,29 +64,32 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/recipes" element={<Recipes />} />
-        <Route path="/production" element={<Production />} />
-        <Route path="/bottling" element={<Bottling />} />
-        <Route path="/labeling" element={<Labeling />} />
-        <Route path="/excise" element={<Excise />} />
-        <Route path="/sales" element={<Sales />} />
-        <Route path="/purchases" element={<Purchases />} />
-        <Route path="/payments" element={<Payments />} />
-        <Route path="/stock-card" element={<StockCard />} />
-        <Route path="/reports/sales" element={<SalesReport />} />
-        <Route path="/reports/receivables" element={<ReceivablesReport />} />
-        <Route path="/traceability" element={<BatchTraceability />} />
-        <Route path="/settings" element={<Settings />} />
-      <Route path="/users" element={<Users />} />
-        <Route path="/master/brands" element={<Brands />} />
-        <Route path="/master/categories" element={<Categories />} />
-        <Route path="/master/suppliers" element={<Suppliers />} />
-        <Route path="/master/customers" element={<Customers />} />
-        <Route path="/master/materials" element={<Materials />} />
-        <Route path="/master/products" element={<Products />} />
-        <Route path="/master/warehouses" element={<Warehouses />} />
+        <Route element={<PermissionGuard />}>
+          <Route path="/" element={<LandingRedirect />} />
+          <Route path="/recipes" element={<Recipes />} />
+          <Route path="/production" element={<Production />} />
+          <Route path="/bottling" element={<Bottling />} />
+          <Route path="/labeling" element={<Labeling />} />
+          <Route path="/excise" element={<Excise />} />
+          <Route path="/sales" element={<Sales />} />
+          <Route path="/purchases" element={<Purchases />} />
+          <Route path="/payments" element={<Payments />} />
+          <Route path="/stock-card" element={<StockCard />} />
+          <Route path="/reports/sales" element={<SalesReport />} />
+          <Route path="/reports/receivables" element={<ReceivablesReport />} />
+          <Route path="/traceability" element={<BatchTraceability />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/master/brands" element={<Brands />} />
+          <Route path="/master/categories" element={<Categories />} />
+          <Route path="/master/suppliers" element={<Suppliers />} />
+          <Route path="/master/customers" element={<Customers />} />
+          <Route path="/master/materials" element={<Materials />} />
+          <Route path="/master/products" element={<Products />} />
+          <Route path="/master/warehouses" element={<Warehouses />} />
+        </Route>
       </Route>
+      <Route path="/no-access" element={<NoAccess />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />

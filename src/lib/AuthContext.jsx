@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
@@ -136,6 +136,29 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Silent permission refresh (no loading spinner). Triggered when the tab
+  // regains focus so a permission revoked by an admin takes effect without a
+  // re-login; throttled to 30s to avoid hammering the backend.
+  const lastRefresh = useRef(Date.now());
+  const refreshProfile = async () => {
+    if (!isAuthenticated) return;
+    const now = Date.now();
+    if (now - lastRefresh.current < 30000) return;
+    lastRefresh.current = now;
+    try {
+      const profile = await fetchProfile();
+      if (profile) setUser(profile);
+    } catch { /* ignore — best-effort refresh */ }
+  };
+
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'visible') refreshProfile();
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [isAuthenticated]);
+
   const logout = (shouldRedirect = true) => {
     setUser(null);
     setIsAuthenticated(false);
@@ -166,7 +189,8 @@ export const AuthProvider = ({ children }) => {
       logout,
       navigateToLogin,
       checkUserAuth,
-      checkAppState
+      checkAppState,
+      refreshProfile
     }}>
       {children}
     </AuthContext.Provider>

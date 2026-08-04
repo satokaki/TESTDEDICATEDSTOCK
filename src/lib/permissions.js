@@ -159,3 +159,46 @@ export function normalizePermissions(perm) {
   }
   return out;
 }
+
+/**
+ * Ordered route → permission map. Drives the permission-aware landing page:
+ * after login the user is sent to the first route they can `view`, never to a
+ * page they lack access to. Order mirrors the sidebar (Layout.jsx menuItems).
+ */
+export const ROUTE_ACCESS = [
+  { route: '/', perm: 'dashboard' },
+  { route: '/recipes', perm: 'recipes' },
+  { route: '/production', perm: 'production' },
+  { route: '/bottling', perm: 'bottling' },
+  { route: '/labeling', perm: 'labeling' },
+  { route: '/excise', perm: 'excise' },
+  { route: '/purchases', perm: 'purchases' },
+  { route: '/sales', perm: 'sales' },
+  { route: '/payments', perm: 'payments' },
+  { route: '/stock-card', perm: 'stock_card' },
+  { route: '/reports/sales', perm: 'report_sales' },
+  { route: '/reports/receivables', perm: 'report_receivables' },
+  { route: '/traceability', perm: 'traceability' },
+  { route: '/master/brands', perm: 'master_brands' },
+  { route: '/master/categories', perm: 'master_categories' },
+  { route: '/master/suppliers', perm: 'master_suppliers' },
+  { route: '/master/customers', perm: 'master_customers' },
+  { route: '/master/materials', perm: 'master_materials' },
+  { route: '/master/products', perm: 'master_products' },
+  { route: '/master/warehouses', perm: 'master_warehouses' },
+  { route: '/users', perm: 'users' },
+  { route: '/settings', perm: 'settings' },
+];
+
+/** First route the user may view, or null if they have no view permission at all. */
+export function getFirstAccessibleRoute(user) {
+  return ROUTE_ACCESS.find((r) => hasPermission(user, r.perm, 'view'))?.route || null;
+}
+
+/** Whether the user may view a given path. Unknown routes pass (public/auth pages). */
+export function canAccessRoute(user, path) {
+  if (user?.role === 'admin') return true;
+  const entry = ROUTE_ACCESS.find((r) => r.route === path);
+  if (!entry) return true;
+  return hasPermission(user, entry.perm, 'view');
+}
