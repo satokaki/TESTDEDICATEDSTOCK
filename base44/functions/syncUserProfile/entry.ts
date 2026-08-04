@@ -68,6 +68,24 @@ async function genUserCode(base44) {
   } catch { return ''; }
 }
 
+// Decode the Bearer JWT from the request headers. The platform always sends the
+// caller's access token here, so this is a reliable identity source even when the
+// caller has no User entity record (base44.auth.me() = /entities/User/me 404s
+// in that case).
+function decodeJwt(req) {
+  try {
+    const h = req.headers || {};
+    const raw = (h.get && (h.get('authorization') || h.get('Authorization'))) || h.authorization || '';
+    const token = String(raw).replace(/^Bearer\s+/i, '').trim();
+    if (!token) return null;
+    const seg = token.split('.');
+    if (seg.length < 2) return null;
+    const b64 = seg[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    return JSON.parse(json);
+  } catch { return null; }
+}
+
 /**
  * Idempotent sync of the authenticated user into the application profile.
  * Handles two cases:
@@ -82,11 +100,20 @@ async function genUserCode(base44) {
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const authUser = await base44.auth.me();
-    if (!authUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const email = normalizeEmail(authUser.email);
-    const authId = authUser.id;
+    // Primary identity: base44.auth.me() (returns the User entity record when one
+    // exists). Fallback: decode the JWT so users WITHOUT a User entity record
+    // (platform did not create one) still resolve and get a profile from their
+    // UserInvitation.
+    let authUser = null;
+    try { authUser = await base44.auth.me(); } catch { authUser = null; }
+    const jwt = decodeJwt(req);
+    const jwtId = jwt && (jwt.sub || jwt.user_id || jwt.id);
+    const jwtEmail = jwt && (jwt.email || jwt.user_email || jwt.email_address);
+
+    const authId = (authUser && authUser.id) || jwtId;
+    const email = normalizeEmail((authUser && authUser.email) || jwtEmail || '');
+    if (!authId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const now = new Date().toISOString();
     const sr = base44.asServiceRole;
 
@@ -115,7 +142,7 @@ export default async function(req) {
     const fullName =
       (appUser && appUser.full_name) ||
       (invForProfile && invForProfile.full_name) ||
-      authUser.full_name ||
+      (authUser && authUser.full_name) ||
       (email ? email.split('@')[0] : 'Pengguna');
     let userCode = (appUser && appUser.user_code) || (invForProfile && invForProfile.user_code) || '';
 
@@ -168,7 +195,7 @@ export default async function(req) {
     return Response.json({
       id: authId,
       full_name: fullName,
-      email: authUser.email,
+      email: email || (authUser && authUser.email) || '',
       role,
       status,
       permissions,

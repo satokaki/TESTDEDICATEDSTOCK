@@ -1,5 +1,20 @@
 import { base44 } from '@/api/base44Client';
+import { appParams } from '@/lib/app-params';
 import { getDefaultPermissions } from '@/lib/permissions';
+
+// Decode the local access token (JWT) so we can recover the caller's id + email
+// even when both syncUserProfile and base44.auth.me() are unavailable.
+function decodeJwtToken(token) {
+  try {
+    const t = String(token || '').replace(/^Bearer\s+/i, '').trim();
+    if (!t) return null;
+    const seg = t.split('.');
+    if (seg.length < 2) return null;
+    const b64 = seg[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(escape(atob(b64)));
+    return JSON.parse(json);
+  } catch { return null; }
+}
 
 /**
  * Client-side fallback: ensure a user object always carries role/status/permissions
@@ -33,5 +48,21 @@ export async function fetchProfile() {
   }
   let me = null;
   try { me = await base44.auth.me(); } catch { /* ignore */ }
-  return ensureUserDefaults(me);
+  if (me && me.id) return ensureUserDefaults(me);
+  // Last-resort: decode the local JWT so an authenticated user never renders an
+  // empty sidebar / "Belum Ada Role" when sync and me() both fail.
+  const jwt = decodeJwtToken(appParams.token);
+  if (jwt) {
+    const id = jwt.sub || jwt.user_id || jwt.id;
+    const email = jwt.email || jwt.user_email || '';
+    if (id) {
+      return ensureUserDefaults({
+        id,
+        email,
+        full_name: email ? email.split('@')[0] : '',
+        role: 'user',
+      });
+    }
+  }
+  return null;
 }
