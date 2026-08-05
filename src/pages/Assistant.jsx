@@ -10,6 +10,19 @@ import { cn } from '@/lib/utils';
 
 const AGENT_NAME = 'labpro_assistant';
 
+const FAQ_SUGGESTIONS = [
+  'Bagaimana alur produksi dari resep sampai jual?',
+  'Pita cukai dimasukkan ke Master Bahan atau Master Barang?',
+  'Kenapa kategori tidak muncul saat tambah bahan?',
+  'Kenapa produksi gagal posting?',
+  'Kenapa HPP produk saya nol?',
+  'Produk tidak bisa dijual, kenapa?',
+  'Cara catat pelunasan piutang?',
+  'Cara tambah user baru?',
+  'Cara backup database?',
+  'Resep tidak muncul untuk brewer, kenapa?',
+];
+
 function MessageBubble({ message }) {
   const isUser = message.role === 'user';
   return (
@@ -83,9 +96,9 @@ export default function Assistant() {
     catch (e) { toast({ variant: 'destructive', title: 'Gagal membuat percakapan', description: e.message }); }
   };
 
-  const send = async () => {
-    if (!input.trim() || sending) return;
-    const text = input.trim();
+  const send = async (overrideText) => {
+    const text = (overrideText ?? input).trim();
+    if (!text || sending) return;
     setInput('');
     setSending(true);
     try {
@@ -96,6 +109,8 @@ export default function Assistant() {
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal mengirim', description: e.message }); setInput(text); }
     finally { setSending(false); }
   };
+
+  const askFaq = (q) => send(q);
 
   const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
 
@@ -129,14 +144,26 @@ export default function Assistant() {
         {/* Chat area */}
         <div className="border border-border rounded-lg bg-card flex flex-col overflow-hidden">
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3.5">
-            {!currentId ? (
-              <div className="h-full flex flex-col items-center justify-center text-center px-6 text-muted-foreground gap-3">
-                <Bot className="w-10 h-10 opacity-40" />
-                <p className="text-[13px]">Mulai percakapan baru untuk bertanya cara mengoperasikan LAB PRO.</p>
-                <Button onClick={newConversation} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Mulai</Button>
+            {!currentId || messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center px-6 gap-4">
+                <Bot className="w-10 h-10 opacity-40 text-muted-foreground" />
+                <div>
+                  <p className="text-[13px] font-medium text-foreground">Halo! Saya Asisten Operasi LAB PRO.</p>
+                  <p className="text-[12px] text-muted-foreground mt-1">Pilih pertanyaan di bawah atau ketik sendiri untuk mulai.</p>
+                </div>
+                <div className="flex flex-col gap-1.5 w-full max-w-sm">
+                  {FAQ_SUGGESTIONS.map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => askFaq(q)}
+                      disabled={sending}
+                      className="text-left text-[12.5px] px-3 py-2 rounded-lg border border-border bg-muted/40 hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ) : messages.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-muted-foreground text-[12.5px]">Tulis pesan pertama…</div>
             ) : (
               messages.map(m => <MessageBubble key={m.id || m._id || Math.random()} message={m} />)
             )}
