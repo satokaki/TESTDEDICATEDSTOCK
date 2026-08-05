@@ -165,7 +165,8 @@ export default function Recipes() {
   };
 
   const handleSubmit = async () => {
-    if (!form.name || !form.brand_id) { toast({ variant: 'destructive', title: 'Nama dan merk wajib diisi' }); return; }
+    if (!form.name) { toast({ variant: 'destructive', title: 'Nama resep wajib diisi' }); return; }
+    if (form.recipe_type !== 'PREMIX' && !form.brand_id) { toast({ variant: 'destructive', title: 'Merk wajib diisi untuk resep produk jadi' }); return; }
     if (form.ingredients.length === 0) { toast({ variant: 'destructive', title: 'Resep harus memiliki minimal 1 bahan' }); return; }
     if (form.recipe_type === 'PREMIX') {
       const outputMaterial = materials.find(m => m.id === form.output_material_id);
@@ -268,6 +269,21 @@ export default function Recipes() {
     } catch { toast({ variant: 'destructive', title: 'Gagal menduplikasi' }); }
   };
 
+  const handleDelete = async (item) => {
+    if (!confirm(`Hapus resep "${item.name}"?\n\nResep yang sudah pernah dipakai produksi akan diarsipkan (nonaktif) dan tidak bisa dipakai untuk produksi baru. Histori transaksi lama tetap aman.`)) return;
+    try {
+      const draftProductions = await base44.entities.ProductionOrder.filter({ recipe_id: item.id, status: { $in: ['draft', 'menunggu_bahan', 'siap_produksi', 'sedang_diproses'] } });
+      if (draftProductions.length > 0) {
+        toast({ variant: 'destructive', title: 'Resep tidak dapat dihapus', description: `Resep sedang digunakan pada ${draftProductions.length} transaksi produksi Draft/Aktif. Selesaikan atau batalkan transaksi tersebut terlebih dahulu.` });
+        return;
+      }
+      await base44.entities.Recipe.update(item.id, { status: 'inactive' });
+      await createAuditLog({ module: 'Resep', action: 'Hapus/Arsip', entity_type: 'Recipe', entity_id: item.id, reference_number: item.code });
+      toast({ title: 'Resep berhasil diarsipkan', description: 'Tidak lagi tersedia untuk produksi baru.' });
+      loadData();
+    } catch (e) { toast({ variant: 'destructive', title: 'Gagal menghapus', description: e.message }); }
+  };
+
   const toggleHide = async (row) => {
     if (!confirm(row.is_hidden ? `Tampilkan resep "${row.name}"?` : `Sembunyikan resep "${row.name}" dari Brewer?`)) return;
     try {
@@ -310,6 +326,9 @@ export default function Recipes() {
             <button onClick={() => handleApprove(row)} className="p-1.5 hover:bg-emerald-50 rounded text-emerald-600" title="Setujui"><CheckCircle className="w-3.5 h-3.5" /></button>
           )}
           <button onClick={() => handleDuplicate(row)} className="p-1.5 hover:bg-muted rounded" title="Duplikasi"><Copy className="w-3.5 h-3.5" /></button>
+          {isAdmin && (
+            <button onClick={() => handleDelete(row)} className="p-1.5 hover:bg-red-50 rounded text-red-500" title="Hapus/Arsipkan"><Trash2 className="w-3.5 h-3.5" /></button>
+          )}
         </div>
       )
     },
@@ -350,13 +369,15 @@ export default function Recipes() {
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2"><Label className="text-[12.5px] mb-1">Nama Resep *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Kode</Label><Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly /></div>
-          <div>
-            <Label className="text-[12.5px] mb-1">Merk *</Label>
-            <Select value={form.brand_id} onValueChange={v => setForm({ ...form, brand_id: v })}>
-              <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih merk" /></SelectTrigger>
-              <SelectContent>{brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
+          {form.recipe_type !== 'PREMIX' && (
+            <div>
+              <Label className="text-[12.5px] mb-1">Merk *</Label>
+              <Select value={form.brand_id} onValueChange={v => setForm({ ...form, brand_id: v })}>
+                <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih merk" /></SelectTrigger>
+                <SelectContent>{brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label className="text-[12.5px] mb-1">Produk Terkait</Label>
             <Select value={form.product_id} onValueChange={v => setForm({ ...form, product_id: v })}>

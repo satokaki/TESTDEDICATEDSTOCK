@@ -254,6 +254,8 @@ export default function Production() {
     }
     setSubmitting(true);
     try {
+      const isPremixProduction = editing.production_type === 'PREMIX';
+      const consumeType = isPremixProduction ? 'premix_consumption' : 'production_consumption';
       // Reduce material stock + record ledger
       for (const m of mats) {
         const actual = Number(m.required_gram) || 0;
@@ -264,26 +266,60 @@ export default function Production() {
         await recordStockMovement({
           item_type: 'material', item_id: m.material_id, item_name: m.material_name, item_code: mat?.code || '',
           quantity_out: actual, unit: 'gram',
-          transaction_type: 'production_consumption', transaction_number: editing.production_number,
+          transaction_type: consumeType, transaction_number: editing.production_number,
           reference_type: 'production', reference_id: editing.id,
-          notes: `Produksi ${editing.batch_number}`,
+          notes: isPremixProduction ? `Produksi premix ${editing.batch_number}` : `Produksi ${editing.batch_number}`,
         });
       }
-      // Create bulk output (production_output)
       const totalActualGram = mats.reduce((s, m) => s + Number(m.required_gram || 0), 0);
-      const actualVolume = (totalActualGram / 1.18).toFixed(0); // approximate bulk density
-      await recordStockMovement({
-        item_type: 'product', item_id: editing.product_id || editing.recipe_id, item_name: `Bulk ${editing.product_name || editing.recipe_code}`, item_code: editing.batch_number,
-        batch_id: editing.id, batch_number: editing.batch_number,
-        inventory_status: 'BULK',
-        quantity_in: Number(actualVolume), unit: 'ml',
-        transaction_type: 'production_output', transaction_number: editing.production_number,
-        reference_type: 'production', reference_id: editing.id,
-        notes: `Hasil mixing ${editing.batch_number}`,
-      });
-      await base44.entities.ProductionOrder.update(editing.id, { status: 'siap_bottling', actual_volume: Number(actualVolume) });
-      await createAuditLog({ module: 'Produksi', action: 'Posting', entity_type: 'ProductionOrder', entity_id: editing.id, reference_number: editing.production_number });
-      toast({ title: 'Produksi berhasil diposting', description: 'Stok bahan dikurangi, bulk masuk' });
+
+      if (isPremixProduction) {
+        // PREMIX: output → stok Material premix (inventory_status=PREMIX), bukan BULK.
+        const outputMat = materials.find(m => m.id === editing.output_material_id);
+        const outputQty = Number(editing.target_quantity) || totalActualGram;
+        const outputUnit = editing.target_unit || 'gram';
+        // HPP Premix = total biaya bahan input ÷ output aktual
+        const totalInputCost = mats.reduce((s, m) => {
+          const mat = materials.find(x => x.id === m.material_id);
+          return s + (Number(m.required_gram || 0) * Number(mat?.last_purchase_price || 0));
+        }, 0);
+        const hppPerUnit = outputQty > 0 ? totalInputCost / outputQty : 0;
+        await recordStockMovement({
+          item_type: 'material', item_id: editing.output_material_id,
+          item_name: outputMat?.name || editing.output_material_name || '', item_code: outputMat?.code || '',
+          batch_id: editing.id, batch_number: editing.batch_number,
+          inventory_status: 'PREMIX',
+          quantity_in: outputQty, unit: outputUnit,
+          transaction_type: 'premix_output', transaction_number: editing.production_number,
+          reference_type: 'production', reference_id: editing.id,
+          notes: `Hasil premix ${editing.batch_number}`,
+        });
+        // Update HPP material premix (last_purchase_price = cost per base unit)
+        if (outputMat) {
+          await base44.entities.Material.update(outputMat.id, { last_purchase_price: Number(hppPerUnit.toFixed(4)) });
+        }
+        await base44.entities.ProductionOrder.update(editing.id, {
+          status: 'selesai_mixing', actual_output_quantity: outputQty,
+          waste_quantity: Math.max(0, totalActualGram - outputQty),
+        });
+        await createAuditLog({ module: 'Produksi', action: 'Posting Premix', entity_type: 'ProductionOrder', entity_id: editing.id, reference_number: editing.production_number });
+        toast({ title: 'Produksi Premix berhasil diposting', description: 'Stok bahan dikurangi, stok premix ditambahkan' });
+      } else {
+        // FINISHED_PRODUCT (BULK): output → stok produk BULK siap bottling.
+        const actualVolume = (totalActualGram / 1.18).toFixed(0);
+        await recordStockMovement({
+          item_type: 'product', item_id: editing.product_id || editing.recipe_id, item_name: `Bulk ${editing.product_name || editing.recipe_code}`, item_code: editing.batch_number,
+          batch_id: editing.id, batch_number: editing.batch_number,
+          inventory_status: 'BULK',
+          quantity_in: Number(actualVolume), unit: 'ml',
+          transaction_type: 'production_output', transaction_number: editing.production_number,
+          reference_type: 'production', reference_id: editing.id,
+          notes: `Hasil mixing ${editing.batch_number}`,
+        });
+        await base44.entities.ProductionOrder.update(editing.id, { status: 'siap_bottling', actual_volume: Number(actualVolume) });
+        await createAuditLog({ module: 'Produksi', action: 'Posting', entity_type: 'ProductionOrder', entity_id: editing.id, reference_number: editing.production_number });
+        toast({ title: 'Produksi berhasil diposting', description: 'Stok bahan dikurangi, bulk masuk' });
+      }
       setDetailOpen(false); loadData();
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal posting', description: e.message }); }
     finally { setSubmitting(false); }
@@ -354,7 +390,7 @@ export default function Production() {
           {row.status === 'siap_bottling' && (
             <span className="p-1.5 text-violet-500" title="Siap bottling"><CheckCircle className="w-3.5 h-3.5" /></span>
           )}
-          {!['dibatalkan', 'siap_bottling'].includes(row.status) && (
+          {!['dibatalkan', 'siap_bottling', 'selesai_mixing'].includes(row.status) && (
             <button onClick={() => handleCancel(row)} className="p-1.5 hover:bg-red-50 rounded text-red-500" title="Batalkan"><X className="w-3.5 h-3.5" /></button>
           )}
         </div>
@@ -475,7 +511,7 @@ export default function Production() {
           </div>
         ) : (
           <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[11px] text-amber-700 mt-2">
-            ⚠ Posting akan mengurangi stok bahan dan membuat output bulk. Proses tidak dapat diulang.
+            ⚠ Posting akan mengurangi stok bahan dan {editing?.production_type === 'PREMIX' ? 'menambah stok premix' : 'membuat output bulk'}. Proses tidak dapat diulang.
           </div>
         )}
       </FormModal>
