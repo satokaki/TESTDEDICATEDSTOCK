@@ -143,7 +143,7 @@ export default function Materials() {
       const payload = {
         ...form,
         is_internally_produced: isPremix,
-        material_category: isPremix ? 'premix' : (isRecipeType ? form.material_category : ''),
+        material_category: isPremix ? 'premix' : (isRecipeType ? form.material_category : undefined),
         concentration_value: isPremix ? Number(form.concentration_value) : undefined,
         concentration_unit: form.concentration_unit,
         carrier_material_id: isPremix ? form.carrier_material_id : '',
