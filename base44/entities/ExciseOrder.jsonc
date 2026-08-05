@@ -30,7 +30,23 @@
     },
     "excise_label_type": {
       "type": "string",
-      "description": "Jenis pita cukai"
+      "description": "Jenis pita cukai (label visual)"
+    },
+    "excise_material_id": {
+      "type": "string",
+      "description": "ID Material pita cukai (material_type=EXCISE) dari mapping"
+    },
+    "excise_material_name": {
+      "type": "string"
+    },
+    "excise_quantity_per_unit": {
+      "type": "number",
+      "default": 1,
+      "description": "Kebutuhan pita cukai per unit produk (dari mapping)"
+    },
+    "excise_total_required": {
+      "type": "number",
+      "description": "Total pita cukai dikonsumsi (quantity x per_unit)"
     },
     "document_number": {
       "type": "string",

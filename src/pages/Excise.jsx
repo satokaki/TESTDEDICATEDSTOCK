@@ -24,42 +24,77 @@ export default function Excise() {
   const [belumCukaiStock, setBelumCukaiStock] = useState([]);
   const [products, setProducts] = useState([]);
   const [brands, setBrands] = useState([]);
+  const [exciseMappings, setExciseMappings] = useState([]);
+  const [exciseMaterials, setExciseMaterials] = useState([]);
+  const [exciseStocks, setExciseStocks] = useState({});
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+  const [form, setForm] = useState({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_mapping_id: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [items, balances, prods, brs] = await Promise.all([
+      const [items, balances, prods, brs, maps, mats, matBal] = await Promise.all([
         base44.entities.ExciseOrder.list('-created_date', 100),
         getAllStockBalances('product'),
         base44.entities.Product.filter({ is_active: true }),
         base44.entities.Brand.filter({ is_active: true }),
+        base44.entities.ProductComponentMapping.filter({ component_type: 'excise', is_active: true }),
+        base44.entities.Material.filter({ material_type: 'EXCISE', is_active: true }),
+        getAllStockBalances('material'),
       ]);
       setData(items);
-      // belum_cukai stock = stock balances that have belum_cukai products
       setBelumCukaiStock(balances.filter(b => b.inventory_status === 'UNEXCISED' && b.quantity > 0));
-      setProducts(prods);
-      setBrands(brs);
+      setProducts(prods); setBrands(brs);
+      setExciseMappings(maps); setExciseMaterials(mats);
+      const sm = {}; matBal.forEach(b => { sm[b.item_id] = (sm[b.item_id] || 0) + (b.available_quantity || 0); });
+      setExciseStocks(sm);
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
     finally { setLoading(false); }
   }, [toast]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const cukaiOptions = form.product_id ? exciseMappings.filter(m => m.product_id === form.product_id) : [];
+  const exciseTotalRequired = (Number(form.quantity) || 0) * (Number(form.excise_quantity_per_unit) || 0);
+
   const openAdd = () => {
-    setForm({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+    setForm({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_mapping_id: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
     setModalOpen(true);
+  };
+
+  const onStockChange = (v) => {
+    const stock = belumCukaiStock.find(s => s.id === v);
+    const prod = products.find(p => p.id === stock?.item_id);
+    const pid = stock?.item_id || '';
+    const maps = exciseMappings.filter(m => m.product_id === pid);
+    const def = maps.find(m => m.is_default) || maps[0];
+    const mat = def ? exciseMaterials.find(m => m.id === def.material_id) : null;
+    setForm({
+      ...form, stock_id: v, product_id: pid, brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size ?? '',
+      excise_mapping_id: def?.id || '', excise_material_id: def?.material_id || '', excise_material_name: mat?.name || def?.material_name || '',
+      excise_quantity_per_unit: String(def?.quantity_per_unit ?? 1), excise_label_type: mat?.name || def?.material_name || '',
+    });
+  };
+
+  const onCukaiChange = (mappingId) => {
+    const m = exciseMappings.find(x => x.id === mappingId);
+    const mat = m ? exciseMaterials.find(mm => mm.id === m.material_id) : null;
+    setForm({ ...form, excise_mapping_id: mappingId, excise_material_id: m?.material_id || '', excise_material_name: mat?.name || m?.material_name || '', excise_quantity_per_unit: String(m?.quantity_per_unit ?? 1), excise_label_type: mat?.name || m?.material_name || '' });
   };
 
   const handleSubmit = async () => {
     if (!form.product_id || !form.quantity || !form.operator) { toast({ variant: 'destructive', title: 'Produk, jumlah, dan operator wajib diisi' }); return; }
     const stockItem = belumCukaiStock.find(s => s.id === form.stock_id);
     if (stockItem && Number(form.quantity) > stockItem.available_quantity) {
-      toast({ variant: 'destructive', title: 'Jumlah melebihi stok belum cukai', description: `Tersedia: ${stockItem.available_quantity}` });
-      return;
+      toast({ variant: 'destructive', title: 'Jumlah melebihi stok belum cukai', description: `Tersedia: ${stockItem.available_quantity}` }); return;
+    }
+    if (form.excise_material_id) {
+      const stk = exciseStocks[form.excise_material_id] || 0;
+      if (exciseTotalRequired > stk) {
+        toast({ variant: 'destructive', title: 'Stok pita cukai tidak cukup', description: `Butuh ${exciseTotalRequired}, stok ${stk}` }); return;
+      }
     }
     setSubmitting(true);
     try {
@@ -74,28 +109,36 @@ export default function Excise() {
         bottle_size: Number(form.bottle_size), quantity: Number(form.quantity),
         excise_label_type: form.excise_label_type, document_number: form.document_number,
         excise_reference_number: form.excise_reference_number,
+        excise_material_id: form.excise_material_id || '', excise_material_name: form.excise_material_name || '',
+        excise_quantity_per_unit: Number(form.excise_quantity_per_unit) || 1, excise_total_required: form.excise_material_id ? exciseTotalRequired : 0,
         excise_date: form.excise_date, operator: form.operator,
         status: 'siap_jual', notes: form.notes,
       });
-      // Reduce belum_cukai stock
+      // consume belum_cukai
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
         batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
-        inventory_status: 'UNEXCISED',
-        quantity_out: Number(form.quantity), unit: 'unit',
+        inventory_status: 'UNEXCISED', quantity_out: Number(form.quantity), unit: 'unit',
         transaction_type: 'excise_consumption', transaction_number: excNumber,
-        reference_type: 'excise', reference_id: excise.id,
-        notes: `Proses cukai ${excNumber}`,
+        reference_type: 'excise', reference_id: excise.id, notes: `Proses cukai ${excNumber}`,
       });
-      // Add siap_jual stock
+      // consume cukai material
+      if (form.excise_material_id) {
+        const mat = exciseMaterials.find(m => m.id === form.excise_material_id);
+        await recordStockMovement({
+          item_type: 'material', item_id: form.excise_material_id, item_name: form.excise_material_name, item_code: mat?.code || '',
+          inventory_status: '', quantity_out: exciseTotalRequired, unit: mat?.unit || 'unit',
+          transaction_type: 'excise_consumption', transaction_number: excNumber,
+          reference_type: 'excise', reference_id: excise.id, notes: `Pita cukai untuk ${excNumber}`,
+        });
+      }
+      // output siap_jual
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
         batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
-        inventory_status: 'READY_FOR_SALE',
-        quantity_in: Number(form.quantity), unit: 'unit',
+        inventory_status: 'READY_FOR_SALE', quantity_in: Number(form.quantity), unit: 'unit',
         transaction_type: 'excise_output', transaction_number: excNumber,
-        reference_type: 'excise', reference_id: excise.id,
-        notes: `Barang siap jual`,
+        reference_type: 'excise', reference_id: excise.id, notes: `Barang siap jual`,
       });
       await createAuditLog({ module: 'Cukai', action: 'Selesai', entity_type: 'ExciseOrder', entity_id: excise.id, reference_number: excNumber });
       toast({ title: 'Proses cukai selesai', description: excNumber });
@@ -114,7 +157,7 @@ export default function Excise() {
           { label: 'Merk', value: row.brand_name || '-' },
           { label: 'No. Batch', value: row.batch_number || '-' },
           { label: 'Ukuran', value: row.bottle_size ? `${row.bottle_size} ml` : '-' },
-          { label: 'Jenis Pita Cukai', value: row.excise_label_type || '-' },
+          { label: 'Pita Cukai', value: row.excise_material_name || row.excise_label_type || '-' },
           { label: 'No. Dokumen', value: row.document_number || '-' },
           { label: 'Ref. Cukai', value: row.excise_reference_number || '-' },
           { label: 'Jumlah', value: row.quantity },
@@ -137,6 +180,7 @@ export default function Excise() {
     { key: 'brand_name', header: 'Merk', render: (row) => row.brand_name || '—' },
     { key: 'batch_number', header: 'Batch', className: 'font-mono' },
     { key: 'quantity', header: 'Jumlah', render: (row) => <span className="tabular-nums">{row.quantity}</span> },
+    { key: 'excise_material_name', header: 'Pita Cukai', render: (row) => row.excise_material_name || row.excise_label_type || '—' },
     { key: 'excise_reference_number', header: 'Ref. Cukai', render: (row) => row.excise_reference_number || '—' },
     { key: 'excise_date', header: 'Tanggal', sortable: true },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
@@ -145,18 +189,14 @@ export default function Excise() {
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Proses Cukai" description="Proses pita cukai untuk barang belum cukai"
+      <PageHeader title="Proses Cukai" description="Proses pita cukai untuk barang belum cukai → siap jual. Pita cukai dari mapping produk."
         actions={<Button onClick={openAdd} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Proses Cukai Baru</Button>} />
       <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada proses cukai" searchKeys={['excise_number', 'product_name', 'batch_number']} searchPlaceholder="Cari proses cukai..." />
 
-      <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title="Proses Cukai Baru" onSubmit={handleSubmit} submitting={submitting} submitLabel="Proses Cukai">
+      <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title="Proses Cukai Baru" onSubmit={handleSubmit} submitting={submitting} submitLabel="Proses Cukai" size="lg">
         <div>
           <Label className="text-[12.5px] mb-1">Produk (Belum Cukai) *</Label>
-          <Select value={form.stock_id} onValueChange={v => {
-            const stock = belumCukaiStock.find(s => s.id === v);
-            const prod = products.find(p => p.id === stock?.item_id);
-            setForm({ ...form, stock_id: v, product_id: stock?.item_id || '', brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size ?? '' });
-          }}>
+          <Select value={form.stock_id} onValueChange={onStockChange}>
             <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih produk belum cukai" /></SelectTrigger>
             <SelectContent>
               {belumCukaiStock.map(s => {
@@ -170,10 +210,28 @@ export default function Excise() {
           <div><Label className="text-[12.5px] mb-1">Merk</Label><Input value={brands.find(b => b.id === form.brand_id)?.name || ''} disabled className="h-9 text-[13px] bg-muted/40" /></div>
           <div><Label className="text-[12.5px] mb-1">Ukuran Botol (ml)</Label><NumberInput value={form.bottle_size} onChange={v => setForm({ ...form, bottle_size: v })} allowDecimal maxDecimals={1} min={0} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Jumlah *</Label><NumberInput value={form.quantity} onChange={v => setForm({ ...form, quantity: v })} allowDecimal={false} min={0} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Jenis Pita Cukai</Label><Input value={form.excise_label_type} onChange={e => setForm({ ...form, excise_label_type: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Tanggal Proses</Label><Input type="date" value={form.excise_date} onChange={e => setForm({ ...form, excise_date: e.target.value })} className="h-9 text-[13px]" /></div>
+        </div>
+        <div>
+          <Label className="text-[12.5px] mb-1">Pita Cukai (dari Mapping)</Label>
+          <Select value={form.excise_mapping_id} onValueChange={onCukaiChange} disabled={!form.product_id}>
+            <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder={form.product_id ? 'Pilih pita cukai' : 'Pilih produk dulu'} /></SelectTrigger>
+            <SelectContent>
+              {cukaiOptions.map(m => {
+                const mat = exciseMaterials.find(mm => mm.id === m.material_id);
+                const stk = exciseStocks[m.material_id] || 0;
+                return <SelectItem key={m.id} value={m.id}>{mat?.name || m.material_name} · Stok {stk} {mat?.unit || 'pcs'}{m.is_default ? ' ★' : ''}</SelectItem>;
+              })}
+            </SelectContent>
+          </Select>
+          {form.product_id && cukaiOptions.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada pita cukai di mapping produk ini. Tambahkan via Master Produk. Proses cukai tetap bisa jalan tanpa konsumsi stok pita.</p>}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div><Label className="text-[12.5px] mb-1">Per Unit</Label><NumberInput value={form.excise_quantity_per_unit} onChange={v => setForm({ ...form, excise_quantity_per_unit: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Total Butuh</Label><Input value={form.excise_material_id ? (exciseTotalRequired || '') : '—'} disabled className="h-9 text-[13px] bg-muted/40" /></div>
+          <div><Label className="text-[12.5px] mb-1">Jenis Pita (label)</Label><Input value={form.excise_label_type} onChange={e => setForm({ ...form, excise_label_type: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Nomor Dokumen</Label><Input value={form.document_number} onChange={e => setForm({ ...form, document_number: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Nomor Referensi Cukai</Label><Input value={form.excise_reference_number} onChange={e => setForm({ ...form, excise_reference_number: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Tanggal Proses</Label><Input type="date" value={form.excise_date} onChange={e => setForm({ ...form, excise_date: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Operator *</Label><Input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} className="h-9 text-[13px]" /></div>
         </div>
         <div><Label className="text-[12.5px] mb-1">Catatan</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} className="text-[13px]" /></div>
