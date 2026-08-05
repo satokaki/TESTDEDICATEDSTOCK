@@ -106,6 +106,26 @@ export default function Purchases() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Realtime: setiap material baru/berubah langsung sinkron ke picker (mencegah stale list).
+  useEffect(() => {
+    const unsubscribe = base44.entities.Material.subscribe((event) => {
+      setMaterials(prev => {
+        if (event.type === 'create') {
+          if (!event.data?.is_active || prev.some(m => m.id === event.data.id)) return prev;
+          return [event.data, ...prev];
+        }
+        if (event.type === 'update') {
+          return prev.map(m => m.id === event.data.id ? { ...m, ...event.data } : m);
+        }
+        if (event.type === 'delete') {
+          return prev.filter(m => m.id !== event.data.id);
+        }
+        return prev;
+      });
+    });
+    return unsubscribe;
+  }, []);
+
   const getMaster = (id) => materials.find(m => m.id === id);
 
   const computeSubtotal = (it) => {
