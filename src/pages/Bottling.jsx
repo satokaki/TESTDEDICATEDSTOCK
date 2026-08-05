@@ -32,18 +32,22 @@ export default function Bottling() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [items, balances, prods, mats, matBal] = await Promise.all([
+      const [items, prodBal, prods, mats, matBal, bottleProds] = await Promise.all([
         base44.entities.BottlingOrder.list('-created_date', 100),
         getAllStockBalances('product'),
         base44.entities.Product.filter({ is_active: true }),
         base44.entities.Material.filter({ material_type: 'BOTTLE', is_active: true }, '-created_date', 500),
         getAllStockBalances('material'),
+        base44.entities.Product.filter({ is_active: true, product_type: 'botol_kosong' }),
       ]);
       setData(items);
-      setBulkStock(balances.filter(b => b.inventory_status === 'BULK' && b.quantity > 0));
+      setBulkStock(prodBal.filter(b => b.inventory_status === 'BULK' && b.quantity > 0));
       setProducts(prods);
-      setBottleMaterials(mats);
-      const sm = {}; matBal.forEach(b => { sm[b.item_id] = (sm[b.item_id] || 0) + (b.available_quantity || 0); });
+      const combined = [...mats, ...bottleProds];
+      setBottleMaterials(combined);
+      const ids = new Set(combined.map(x => x.id));
+      const sm = {};
+      [...matBal, ...prodBal].forEach(b => { if (ids.has(b.item_id)) sm[b.item_id] = (sm[b.item_id] || 0) + (b.available_quantity || 0); });
       setBottleStocks(sm);
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
     finally { setLoading(false); }

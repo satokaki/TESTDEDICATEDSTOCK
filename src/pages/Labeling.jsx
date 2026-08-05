@@ -34,19 +34,24 @@ export default function Labeling() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [items, balances, prods, brs, mats, matBal] = await Promise.all([
+      const [items, prodBal, prods, brs, mats, matBal, labelProds] = await Promise.all([
         base44.entities.LabelingOrder.list('-created_date', 100),
         getAllStockBalances('product'),
         base44.entities.Product.filter({ is_active: true }),
         base44.entities.Brand.filter({ is_active: true }),
         base44.entities.Material.filter({ is_active: true }, '-created_date', 500),
         getAllStockBalances('material'),
+        base44.entities.Product.filter({ is_active: true, product_type: 'label' }),
       ]);
       setData(items);
-      setSiapLabelStock(balances.filter(b => b.inventory_status === 'READY_FOR_LABELING' && b.quantity > 0));
+      setSiapLabelStock(prodBal.filter(b => b.inventory_status === 'READY_FOR_LABELING' && b.quantity > 0));
       setProducts(prods); setBrands(brs);
-      setLabelMaterials(mats.filter(m => m.material_type === 'LABEL' || m.material_type === 'STICKER'));
-      const sm = {}; matBal.forEach(b => { sm[b.item_id] = (sm[b.item_id] || 0) + (b.available_quantity || 0); });
+      const labelMats = mats.filter(m => m.material_type === 'LABEL' || m.material_type === 'STICKER');
+      const combined = [...labelMats, ...labelProds];
+      setLabelMaterials(combined);
+      const ids = new Set(combined.map(x => x.id));
+      const sm = {};
+      [...matBal, ...prodBal].forEach(b => { if (ids.has(b.item_id)) sm[b.item_id] = (sm[b.item_id] || 0) + (b.available_quantity || 0); });
       setLabelStocks(sm);
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
     finally { setLoading(false); }
