@@ -19,6 +19,8 @@ import Payments from '@/pages/Payments';
 import StockCard from '@/pages/StockCard';
 import SalesReport from '@/pages/SalesReport';
 import ReceivablesReport from '@/pages/ReceivablesReport';
+import InventoryReport from '@/pages/InventoryReport';
+import ProfitLossReport from '@/pages/ProfitLossReport';
 import BatchTraceability from '@/pages/BatchTraceability';
 import Hpp from '@/pages/Hpp';
 import Settings from '@/pages/Settings';
@@ -80,6 +82,8 @@ const AuthenticatedApp = () => {
           <Route path="/stock-card" element={<StockCard />} />
           <Route path="/reports/sales" element={<SalesReport />} />
           <Route path="/reports/receivables" element={<ReceivablesReport />} />
+          <Route path="/reports/inventory" element={<InventoryReport />} />
+          <Route path="/reports/profit-loss" element={<ProfitLossReport />} />
           <Route path="/traceability" element={<BatchTraceability />} />
           <Route path="/hpp" element={<Hpp />} />
           <Route path="/settings" element={<Settings />} />

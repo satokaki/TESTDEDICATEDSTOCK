@@ -191,6 +191,8 @@ Setiap stage menelusuri biaya ke stok terkini (last_purchase_price / unit_cost).
 | Kartu Stok | `/stock-card` | Balance & ledger per item/status |
 | Laporan Penjualan | `/reports/sales` | |
 | Laporan Piutang | `/reports/receivables` | |
+| Laporan Inventaris | `/reports/inventory` | Ringkasan stok + estimasi nilai (admin) |
+| Laporan Laba Rugi | `/reports/profit-loss` | Pendapatan vs HPP, laba kotor (admin) |
 | Traceability | `/traceability` | Lacak batch bahan → produk jadi |
 | HPP | `/hpp` | Rincian biaya per unit |
 | Master Merk | `/master/brands` | |
