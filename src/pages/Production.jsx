@@ -21,7 +21,8 @@ import { exportDocumentToPDF } from '@/lib/pdfExport';
 import { useAuth } from '@/lib/AuthContext';
 import { canSelectRecipeForProduction, isRecipeFormulaHidden } from '@/lib/permissions';
 import { Checkbox } from '@/components/ui/checkbox';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatCurrency } from '@/lib/format';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
 
 // Weighing order: flavor → sweetener → cooling → additive/premix → nicotine → VG → PG
 const PRODUCTION_ORDER = {
@@ -46,6 +47,8 @@ export default function Production() {
   const [checked, setChecked] = useState({});
   const [gramasiTidakSinkron, setGramasiTidakSinkron] = useState(false);
   const [gramasiMap, setGramasiMap] = useState({});
+  const [premixPreview, setPremixPreview] = useState(null);
+  const [premixConfirmOpen, setPremixConfirmOpen] = useState(false);
   const [form, setForm] = useState({ recipe_id: '', target_volume: 1000, production_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
 
   const loadData = useCallback(async () => {
@@ -326,6 +329,32 @@ export default function Production() {
     finally { setSubmitting(false); }
   };
 
+  // Pre-post gate untuk PREMIX: tampilkan breakdown HPP + validasi base unit sebelum posting.
+  // TIDAK mengubah rumus/Engine. Non-premix langsung handlePost.
+  const handlePostRequest = () => {
+    if (!editing || editing.production_type !== 'PREMIX') {
+      return handlePost();
+    }
+    const rows = productionMaterials.map((m) => {
+      const mat = materials.find((x) => x.id === m.material_id);
+      const req = Number(m.required_gram || 0);
+      const price = Number(mat?.last_purchase_price || 0);
+      const unit = (mat?.unit || '').toLowerCase();
+      const errors = [];
+      if (unit && unit !== 'gram' && unit !== 'mililiter')
+        errors.push(`unit "${mat.unit}" bukan base unit (gram/mililiter) — kemungkinan harga masih per satuan beli`);
+      if (!(price > 0)) errors.push('harga per base unit belum diisi (0/null)');
+      if (!(req > 0)) errors.push('required_gram <= 0');
+      return { name: m.material_name, unit: mat?.unit || '-', required_gram: req, price_per_gram: price, cost: req * price, valid: errors.length === 0, errors };
+    });
+    const outputQty = Number(editing.actual_output_quantity) || Number(editing.target_quantity) || 0;
+    const allValid = rows.length > 0 && rows.every((r) => r.valid) && outputQty > 0;
+    const total = rows.reduce((s, r) => s + (r.valid ? r.cost : 0), 0);
+    const hpp = allValid && outputQty > 0 ? total / outputQty : 0;
+    setPremixPreview({ rows, outputQty, total, hpp, valid: allValid });
+    setPremixConfirmOpen(true);
+  };
+
   const handleCancel = async (item) => {
     if (!confirm(`Batalkan produksi "${item.production_number}"?`)) return;
     try {
@@ -483,7 +512,7 @@ export default function Production() {
       </FormModal>
 
       {/* Detail / Actual Weighing Modal */}
-      <FormModal open={detailOpen} onClose={() => setDetailOpen(false)} title={`Proses Penimbangan · ${editing?.production_number || ''}`} onSubmit={handlePost} submitting={submitting} submitLabel="Posting Produksi" size="lg">
+      <FormModal open={detailOpen} onClose={() => setDetailOpen(false)} title={`Proses Penimbangan · ${editing?.production_number || ''}`} onSubmit={handlePostRequest} submitting={submitting} submitLabel="Posting Produksi" size="lg">
         <div className="text-[12px] text-muted-foreground mb-3">Batch: <b>{editing?.batch_number}</b> · Target: <b>{editing?.production_type === 'PREMIX' ? `${editing?.target_quantity || 0} ${editing?.target_unit || 'gram'}` : `${editing?.target_volume || 0} ml`}</b></div>
         <div className="text-[11.5px] text-muted-foreground mb-2">
           {productionMaterials.filter(m => checked[m.material_id]).length}/{productionMaterials.length} bahan sudah dimasukkan
@@ -516,6 +545,70 @@ export default function Production() {
           </div>
         )}
       </FormModal>
+
+      {/* Konfirmasi HPP Premix (pre-post) — validasi base unit + preview HPP */}
+      <AlertDialog open={premixConfirmOpen} onOpenChange={setPremixConfirmOpen}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Konfirmasi HPP Premix</AlertDialogTitle>
+            <AlertDialogDescription>
+              Verifikasi harga ingredient sudah dalam satuan gram (base unit) sebelum posting. Batch: <b>{editing?.batch_number}</b>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="overflow-x-auto max-h-[45vh]">
+            <table className="w-full text-[12px]">
+              <thead><tr className="bg-muted/40 text-muted-foreground">
+                <th className="px-2 py-1 text-left">Bahan</th>
+                <th className="px-2 py-1 text-left">Unit</th>
+                <th className="px-2 py-1 text-right">Gram</th>
+                <th className="px-2 py-1 text-right">Harga/gram</th>
+                <th className="px-2 py-1 text-right">Total Cost</th>
+              </tr></thead>
+              <tbody>
+                {(premixPreview?.rows || []).map((r, i) => (
+                  <tr key={i} className="border-b border-border/30">
+                    <td className="px-2 py-1">{r.name}</td>
+                    <td className="px-2 py-1">{r.unit}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{formatNumber(r.required_gram, 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{formatCurrency(r.price_per_gram)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{formatCurrency(r.cost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr className="bg-muted/30 font-semibold">
+                <td className="px-2 py-1" colSpan={4}>Total Input Cost</td>
+                <td className="px-2 py-1 text-right tabular-nums">{formatCurrency(premixPreview?.total || 0)}</td>
+              </tr></tfoot>
+            </table>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[12px]">
+            <div className="bg-muted/40 rounded px-2 py-1.5">Output: <b>{formatNumber(premixPreview?.outputQty || 0)} gram</b></div>
+            <div className="bg-primary/10 rounded px-2 py-1.5">HPP/gram: <b>{formatCurrency(premixPreview?.hpp || 0)}</b></div>
+          </div>
+          {premixPreview && !premixPreview.valid ? (
+            <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-[11px] text-red-700">
+              ⚠ Validasi gagal — posting diblokir:
+              <ul className="list-disc ml-4 mt-1">
+                {premixPreview.rows.filter((r) => !r.valid).flatMap((r) => r.errors.map((e, i) => <li key={r.name + i}>{r.name}: {e}</li>))}
+              </ul>
+            </div>
+          ) : (
+            <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[11px] text-amber-700">
+              ⚠ Pastikan "Harga/gram" bukan harga per KG. Jika nilainya terlihat 1000× dari biasanya, periksa Master Bahan sebelum posting.
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!premixPreview?.valid || submitting}
+              className={!premixPreview?.valid ? 'opacity-50 pointer-events-none' : ''}
+              onClick={() => handlePost()}
+            >
+              Konfirmasi & Posting
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
