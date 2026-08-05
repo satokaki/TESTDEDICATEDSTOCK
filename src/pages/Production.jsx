@@ -43,6 +43,8 @@ export default function Production() {
   const [calcItems, setCalcItems] = useState([]);
   const [stockCheck, setStockCheck] = useState([]);
   const [checked, setChecked] = useState({});
+  const [gramasiTidakSinkron, setGramasiTidakSinkron] = useState(false);
+  const [gramasiMap, setGramasiMap] = useState({});
   const [form, setForm] = useState({ recipe_id: '', target_volume: 1000, production_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
 
   const loadData = useCallback(async () => {
@@ -152,8 +154,24 @@ export default function Production() {
     const mats = await base44.entities.ProductionMaterial.filter({ production_id: item.id });
     setProductionMaterials(mats);
     const ck = {};
-    mats.forEach(m => { ck[m.material_id] = !!m.actual_gram && Number(m.actual_gram) > 0; });
+    const gMap = {};
+    let expectedTotal = 0, storedTotal = 0;
+    const target = Number(item.target_volume || item.target_quantity || 0);
+    const isFinished = item.production_type !== 'PREMIX';
+    mats.forEach(m => {
+      ck[m.material_id] = !!m.actual_gram && Number(m.actual_gram) > 0;
+      const mat = materials.find(x => x.id === m.material_id);
+      const density = Number(mat?.density || mat?.default_density)
+        || (m.material_type === 'vegetable_glycerin' ? 1.261 : m.material_type === 'propylene_glycol' ? 1.036 : 1);
+      // Sumber data tunggal: pakai snapshot required_gram bila ada; fallback recompute SATU kali (tanpa /100 ganda).
+      const recomputed = (Number(m.percentage) / 100) * target * density;
+      gMap[m.material_id] = m.required_gram != null ? Number(m.required_gram) : recomputed;
+      if (isFinished) { expectedTotal += recomputed; storedTotal += Number(m.required_gram || 0); }
+    });
     setChecked(ck);
+    setGramasiMap(gMap);
+    // Validasi sinkronisasi: total snapshot vs total kalkulasi resep (toleransi 1g).
+    setGramasiTidakSinkron(isFinished && mats.length > 0 && Math.abs(expectedTotal - storedTotal) > 1);
     setDetailOpen(true);
   };
 
@@ -220,6 +238,10 @@ export default function Production() {
     // sedang_diproses. Once posted (siap_bottling) it must never mutate stock again.
     if (!['siap_produksi', 'sedang_diproses'].includes(editing.status)) {
       toast({ variant: 'destructive', title: 'Produksi sudah diposting', description: 'Transaksi tidak dapat diposting dua kali.' });
+      return;
+    }
+    if (gramasiTidakSinkron) {
+      toast({ variant: 'destructive', title: 'Data gramasi tidak sinkron', description: 'Data gramasi produksi tidak sinkron dengan hasil kalkulasi resep. Produksi belum dapat dilanjutkan.' });
       return;
     }
     const allFilled = stockCheck.length > 0; // use detail materials instead
@@ -441,15 +463,21 @@ export default function Production() {
                 <tr key={m.id} className={`border-b border-border/30 ${checked[m.material_id] ? 'bg-emerald-50/60' : ''}`}>
                   <td className="px-2 py-1.5 text-center"><Checkbox checked={!!checked[m.material_id]} onCheckedChange={v => setChecked(c => ({ ...c, [m.material_id]: v }))} /></td>
                   <td className="px-2 py-1.5">{m.material_name}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums font-medium">{(m.required_gram || 0).toFixed(2)} gram</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-medium">{(gramasiMap[m.material_id] ?? Number(m.required_gram || 0)).toFixed(2)} gram</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[11px] text-amber-700 mt-2">
-          ⚠ Posting akan mengurangi stok bahan dan membuat output bulk. Proses tidak dapat diulang.
-        </div>
+        {gramasiTidakSinkron ? (
+          <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-[11px] text-red-700 mt-2">
+            ⚠ Data gramasi produksi tidak sinkron dengan hasil kalkulasi resep. Produksi belum dapat dilanjutkan. Batalkan produksi ini dan buat ulang.
+          </div>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[11px] text-amber-700 mt-2">
+            ⚠ Posting akan mengurangi stok bahan dan membuat output bulk. Proses tidak dapat diulang.
+          </div>
+        )}
       </FormModal>
     </div>
   );
