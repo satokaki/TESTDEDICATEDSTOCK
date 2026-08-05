@@ -39,6 +39,13 @@ const ITEM_TYPE_BY_MATERIAL_TYPE = {
 };
 const deriveItemType = (material_type) => ITEM_TYPE_BY_MATERIAL_TYPE[material_type] || 'supporting_item';
 
+// item_type untuk produk diturunkan dari product_type.
+const ITEM_TYPE_BY_PRODUCT_TYPE = {
+  bahan_baku: 'material', kemasan: 'packaging', botol_kosong: 'packaging',
+  label: 'label', barang_pendukung: 'supporting_item', barang_siap_jual: 'supporting_item',
+};
+const deriveProductItemType = (pt) => ITEM_TYPE_BY_PRODUCT_TYPE[pt] || 'supporting_item';
+
 const UNIT_OPTIONS = [
   { value: 'GRAM', label: 'Gram' },
   { value: 'KG', label: 'Kg' },
@@ -126,7 +133,37 @@ export default function Purchases() {
     return unsubscribe;
   }, []);
 
-  const getMaster = (id) => materials.find(m => m.id === id);
+  // Realtime: setiap produk baru/berubah dari Master Barang langsung sinkron ke picker.
+  useEffect(() => {
+    const unsubscribe = base44.entities.Product.subscribe((event) => {
+      setProducts(prev => {
+        if (event.type === 'create') {
+          if (!event.data?.is_active || prev.some(p => p.id === event.data.id)) return prev;
+          return [event.data, ...prev];
+        }
+        if (event.type === 'update') {
+          return prev.map(p => p.id === event.data.id ? { ...p, ...event.data } : p);
+        }
+        if (event.type === 'delete') {
+          return prev.filter(p => p.id !== event.data.id);
+        }
+        return prev;
+      });
+    });
+    return unsubscribe;
+  }, []);
+
+  // Daftar gabungan material + produk untuk picker Pembelian (supaya barang dari Master Barang juga bisa dipilih).
+  const masterList = useMemo(() => [
+    ...materials.map(m => ({ ...m, _kind: 'material' })),
+    ...products.map(p => ({ ...p, _kind: 'product' })),
+  ], [materials, products]);
+  const masterOptions = useMemo(() => masterList.map(o => ({
+    value: o.id, label: o.name,
+    keywords: `${o.code || ''} ${o.category_name || ''} ${o.material_type || ''} ${o.product_type || ''} ${o._kind || ''}`,
+  })), [masterList]);
+
+  const getMaster = (id) => masterList.find(m => m.id === id);
 
   const computeSubtotal = (it) => {
     const qty = toNum(it.quantity) || 0;
@@ -260,7 +297,8 @@ export default function Purchases() {
 
   const onSelectItem = (idx, id) => {
     const master = getMaster(id);
-    const itemType = deriveItemType(master?.material_type);
+    const isProduct = master?._kind === 'product';
+    const itemType = isProduct ? deriveProductItemType(master?.product_type) : deriveItemType(master?.material_type);
     const snap = snapshotItem(itemType, master);
     const unit = itemType === 'material' ? 'GRAM' : 'PCS';
     updateItem(idx, { item_type: itemType, item_id: id, ...snap, unit, ...unitProps(unit) });
@@ -581,7 +619,7 @@ export default function Purchases() {
                       value={it.item_id}
                       onValueChange={v => onSelectItem(idx, v)}
                       placeholder="Pilih barang / bahan"
-                      options={materials.map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''} ${o.material_type || ''}` }))}
+                      options={masterOptions}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -629,7 +667,7 @@ export default function Purchases() {
                       value={it.item_id}
                       onValueChange={v => onSelectItem(idx, v)}
                       placeholder="Pilih barang / bahan"
-                      options={materials.map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''} ${o.material_type || ''}` }))}
+                      options={masterOptions}
                       className="h-8 text-[11.5px]"
                     />
                   </td>
