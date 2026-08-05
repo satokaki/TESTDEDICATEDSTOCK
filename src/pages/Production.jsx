@@ -20,6 +20,13 @@ import PdfButton from '@/components/PdfButton';
 import { exportDocumentToPDF } from '@/lib/pdfExport';
 import { useAuth } from '@/lib/AuthContext';
 import { canSelectRecipeForProduction, isRecipeFormulaHidden } from '@/lib/permissions';
+import { Checkbox } from '@/components/ui/checkbox';
+
+// Weighing order: flavor → sweetener → cooling → additive/premix → nicotine → VG → PG
+const PRODUCTION_ORDER = {
+  flavor: 10, essence: 10, sweetener: 20, cooling: 30, additive: 40, premix: 40,
+  nicotine: 50, vegetable_glycerin: 60, vg: 60, propylene_glycol: 70, pg: 70, lainnya: 80,
+};
 
 export default function Production() {
   const { toast } = useToast();
@@ -35,7 +42,7 @@ export default function Production() {
   const [submitting, setSubmitting] = useState(false);
   const [calcItems, setCalcItems] = useState([]);
   const [stockCheck, setStockCheck] = useState([]);
-  const [actualGrams, setActualGrams] = useState({});
+  const [checked, setChecked] = useState({});
   const [form, setForm] = useState({ recipe_id: '', target_volume: 1000, production_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
 
   const loadData = useCallback(async () => {
@@ -113,6 +120,15 @@ export default function Production() {
         requiredMl: item.volumeMl || 0,
       };
     }));
+    const orderKey = (it) => {
+      const cat = matsById[it.material_id]?.material_category || it.material_type || '';
+      return PRODUCTION_ORDER[cat] ?? (PRODUCTION_ORDER[it.material_type] ?? 80);
+    };
+    stockChecks.sort((a, b) => {
+      const pa = orderKey(a), pb = orderKey(b);
+      if (pa !== pb) return pa - pb;
+      return String(a.material_name || '').localeCompare(String(b.material_name || ''));
+    });
     setCalcItems(stockChecks);
     setStockCheck(stockChecks);
   }, [recipes, materials]);
@@ -135,9 +151,9 @@ export default function Production() {
     setEditing(item);
     const mats = await base44.entities.ProductionMaterial.filter({ production_id: item.id });
     setProductionMaterials(mats);
-    const ag = {};
-    mats.forEach(m => ag[m.material_id] = m.actual_gram || '');
-    setActualGrams(ag);
+    const ck = {};
+    mats.forEach(m => { ck[m.material_id] = !!m.actual_gram && Number(m.actual_gram) > 0; });
+    setChecked(ck);
     setDetailOpen(true);
   };
 
@@ -209,16 +225,16 @@ export default function Production() {
     const allFilled = stockCheck.length > 0; // use detail materials instead
     const mats = await base44.entities.ProductionMaterial.filter({ production_id: editing.id });
     // Check actual grams entered
-    const missing = mats.filter(m => !actualGrams[m.material_id] || actualGrams[m.material_id] === '');
+    const missing = mats.filter(m => !checked[m.material_id]);
     if (missing.length > 0) {
-      toast({ variant: 'destructive', title: 'Gram aktual belum lengkap', description: `${missing.length} bahan belum ditimbang` });
+      toast({ variant: 'destructive', title: 'Penimbangan belum lengkap', description: `${missing.length} bahan belum dicentang` });
       return;
     }
     setSubmitting(true);
     try {
       // Reduce material stock + record ledger
       for (const m of mats) {
-        const actual = Number(actualGrams[m.material_id]);
+        const actual = Number(m.required_gram) || 0;
         const dev = actual - m.required_gram;
         const devPct = m.required_gram > 0 ? (dev / m.required_gram) * 100 : 0;
         await base44.entities.ProductionMaterial.update(m.id, { actual_gram: actual, deviation_gram: dev, deviation_percent: devPct });
@@ -232,7 +248,7 @@ export default function Production() {
         });
       }
       // Create bulk output (production_output)
-      const totalActualGram = mats.reduce((s, m) => s + Number(actualGrams[m.material_id]), 0);
+      const totalActualGram = mats.reduce((s, m) => s + Number(m.required_gram || 0), 0);
       const actualVolume = (totalActualGram / 1.18).toFixed(0); // approximate bulk density
       await recordStockMovement({
         item_type: 'product', item_id: editing.product_id || editing.recipe_id, item_name: `Bulk ${editing.product_name || editing.recipe_code}`, item_code: editing.batch_number,
@@ -408,29 +424,26 @@ export default function Production() {
       </FormModal>
 
       {/* Detail / Actual Weighing Modal */}
-      <FormModal open={detailOpen} onClose={() => setDetailOpen(false)} title={`Timbang Aktual · ${editing?.production_number || ''}`} onSubmit={handlePost} submitting={submitting} submitLabel="Posting Produksi" size="lg">
+      <FormModal open={detailOpen} onClose={() => setDetailOpen(false)} title={`Proses Penimbangan · ${editing?.production_number || ''}`} onSubmit={handlePost} submitting={submitting} submitLabel="Posting Produksi" size="lg">
         <div className="text-[12px] text-muted-foreground mb-3">Batch: <b>{editing?.batch_number}</b> · Target: <b>{editing?.production_type === 'PREMIX' ? `${editing?.target_quantity || 0} ${editing?.target_unit || 'gram'}` : `${editing?.target_volume || 0} ml`}</b></div>
+        <div className="text-[11.5px] text-muted-foreground mb-2">
+          {productionMaterials.filter(m => checked[m.material_id]).length}/{productionMaterials.length} bahan sudah dimasukkan
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-[11.5px]">
+          <table className="w-full text-[12px]">
             <thead><tr className="bg-muted/40 text-muted-foreground">
-              <th className="px-2 py-1 text-left">Bahan</th>
-              <th className="px-2 py-1 text-right">Standar (gram)</th>
-              <th className="px-2 py-1 text-right">Aktual (gram)</th>
-              <th className="px-2 py-1 text-right">Selisih</th>
+              <th className="px-2 py-1 text-center w-10">✓</th>
+              <th className="px-2 py-1 text-left">Nama Bahan</th>
+              <th className="px-2 py-1 text-right">Gramasi</th>
             </tr></thead>
             <tbody>
-              {productionMaterials.map((m) => {
-                const actual = Number(actualGrams[m.material_id] || 0);
-                const dev = actual - m.required_gram;
-                return (
-                  <tr key={m.id} className="border-b border-border/30">
-                    <td className="px-2 py-1">{m.material_name}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{m.required_gram?.toFixed(2)}</td>
-                    <td className="px-2 py-1"><NumberInput value={actualGrams[m.material_id]} onChange={v => setActualGrams({ ...actualGrams, [m.material_id]: v })} allowDecimal min={0} maxDecimals={3} className="h-7 text-[11.5px] text-right" /></td>
-                    <td className={`px-2 py-1 text-right tabular-nums ${dev > 0.1 ? 'text-amber-600' : dev < -0.1 ? 'text-red-600' : 'text-emerald-600'}`}>{dev.toFixed(2)}</td>
-                  </tr>
-                );
-              })}
+              {productionMaterials.map((m) => (
+                <tr key={m.id} className={`border-b border-border/30 ${checked[m.material_id] ? 'bg-emerald-50/60' : ''}`}>
+                  <td className="px-2 py-1.5 text-center"><Checkbox checked={!!checked[m.material_id]} onCheckedChange={v => setChecked(c => ({ ...c, [m.material_id]: v }))} /></td>
+                  <td className="px-2 py-1.5">{m.material_name}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-medium">{(m.required_gram || 0).toFixed(2)} gram</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
