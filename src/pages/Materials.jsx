@@ -60,12 +60,12 @@ const CATEGORY_TYPE_BY_MATERIAL_TYPE = {
   LABEL: 'label',
   STICKER: 'label',
   CONSUMABLE: 'barang',
-  EXCISE: 'barang',
+  EXCISE: 'cukai',
   FINISHED_GOOD: 'produk_jadi',
 };
 const catTypeLabel = (materialType) => {
   const t = CATEGORY_TYPE_BY_MATERIAL_TYPE[materialType] || 'bahan';
-  return ({ bahan: 'bahan', kemasan: 'kemasan', label: 'label', barang: 'barang', produk_jadi: 'produk jadi' })[t] || t;
+  return ({ bahan: 'bahan', kemasan: 'kemasan', label: 'label', barang: 'barang', cukai: 'cukai', produk_jadi: 'produk jadi' })[t] || t;
 };
 
 const EMPTY = { code: '', name: '', material_type: 'RAW_MATERIAL', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, is_internally_produced: false, concentration_value: '', concentration_unit: 'PERCENT_WW', carrier_material_id: '', default_density: '', notes: '' };

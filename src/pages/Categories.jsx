@@ -18,6 +18,7 @@ const categoryTypes = [
   { value: 'barang', label: 'Barang' },
   { value: 'kemasan', label: 'Kemasan' },
   { value: 'label', label: 'Label' },
+  { value: 'cukai', label: 'Cukai' },
   { value: 'produk_jadi', label: 'Produk Jadi' },
 ];
 
@@ -117,7 +118,7 @@ export default function Categories() {
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Master Kategori" description="Kategori untuk bahan, barang, kemasan, label, produk jadi"
+      <PageHeader title="Master Kategori" description="Kategori untuk bahan, barang, kemasan, label, cukai, produk jadi"
         actions={<Button onClick={openAdd} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Tambah Kategori</Button>} />
       <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada kategori" searchKeys={['code', 'name']} searchPlaceholder="Cari kategori..." />
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Kategori' : 'Tambah Kategori'} onSubmit={handleSubmit} submitting={submitting}>

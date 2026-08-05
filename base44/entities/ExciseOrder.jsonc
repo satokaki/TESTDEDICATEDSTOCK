@@ -48,6 +48,27 @@
       "type": "number",
       "description": "Total pita cukai dikonsumsi (quantity x per_unit)"
     },
+    "use_box": {
+      "type": "boolean",
+      "default": false,
+      "description": "Proses lanjutan: gunakan box (kemasan luar) saat proses cukai"
+    },
+    "box_material_id": {
+      "type": "string",
+      "description": "ID Material box (material_type=PACKAGING) yang dikonsumsi"
+    },
+    "box_material_name": {
+      "type": "string"
+    },
+    "box_quantity_per_unit": {
+      "type": "number",
+      "default": 1,
+      "description": "Kebutuhan box per unit produk (boleh desimal, mis. 1/24)"
+    },
+    "box_total_required": {
+      "type": "number",
+      "description": "Total box dikonsumsi (quantity x per_unit)"
+    },
     "document_number": {
       "type": "string",
       "description": "Nomor dokumen"

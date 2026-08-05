@@ -17,9 +17,10 @@
         "barang",
         "kemasan",
         "label",
+        "cukai",
         "produk_jadi"
       ],
-      "description": "Jisni kategori"
+      "description": "Jenis kategori"
     },
     "is_active": {
       "type": "boolean",

@@ -13,6 +13,7 @@
       "type": "string",
       "enum": [
         "bottle",
+        "box",
         "label",
         "excise"
       ],
@@ -20,7 +21,7 @@
     },
     "material_id": {
       "type": "string",
-      "description": "ID Material (botol/label/cukai) yang kompatibel"
+      "description": "ID Material (botol/box/label/cukai) yang kompatibel"
     },
     "material_code": {
       "type": "string"
@@ -31,7 +32,7 @@
     "quantity_per_unit": {
       "type": "number",
       "default": 1,
-      "description": "Jumlah komponen per unit produk (label/cukai). Botol = 1."
+      "description": "Jumlah komponen per unit produk (label/cukai/box). Botol = 1."
     },
     "is_default": {
       "type": "boolean",
