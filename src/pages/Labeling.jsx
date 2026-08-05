@@ -180,27 +180,30 @@ export default function Labeling() {
         <div>
           <Label className="text-[12.5px] mb-1">Label / Stiker (centang yang dipakai)</Label>
           {form.labels.length === 0 && <p className="text-[11px] text-amber-600">Belum ada barang tipe Label/Stiker. Tambahkan di Master Barang.</p>}
-          <Input value={labelSearch} onChange={e => setLabelSearch(e.target.value)} placeholder="Cari nama/kode label/stiker..." className="h-8 text-[12px] mb-2" />
+          <Input type="text" value={labelSearch} onChange={e => setLabelSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} placeholder="Cari nama/kode label/stiker..." className="h-8 text-[12px] mb-2" />
           <div className="space-y-1.5 max-h-52 overflow-auto border border-border rounded p-2">
-            {form.labels.filter(l => {
-              if (!labelSearch) return true;
-              const q = labelSearch.toLowerCase();
-              return (l.material_name || '').toLowerCase().includes(q) || (l.material_code || '').toLowerCase().includes(q);
-            }).map(l => {
-              const idx = form.labels.findIndex(x => x.material_id === l.material_id);
-              return (
-                <div key={l.material_id} className="flex items-center gap-2 border border-border rounded px-2 py-1.5 bg-muted/10">
-                  <Checkbox checked={l.checked} onCheckedChange={v => updateLabel(idx, { checked: v })} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12.5px] font-medium truncate">{l.material_name}</div>
-                    <div className="text-[11px] text-muted-foreground">Stok: {l.stock} {l.unit}</div>
+            {(() => {
+              const q = labelSearch.trim().toLowerCase();
+              const filtered = form.labels.filter(l => !q || (l.material_name || '').toLowerCase().includes(q) || (l.material_code || '').toLowerCase().includes(q));
+              if (filtered.length === 0) {
+                return <p className="text-[11px] text-muted-foreground text-center py-3">{form.labels.length === 0 ? 'Belum ada data.' : 'Tidak ditemukan.'}</p>;
+              }
+              return filtered.map(l => {
+                const idx = form.labels.findIndex(x => x.material_id === l.material_id);
+                return (
+                  <div key={l.material_id} className="flex items-center gap-2 border border-border rounded px-2 py-1.5 bg-muted/10">
+                    <Checkbox checked={l.checked} onCheckedChange={v => updateLabel(idx, { checked: v })} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12.5px] font-medium truncate">{l.material_name}</div>
+                      <div className="text-[11px] text-muted-foreground">Stok: {l.stock} {l.unit}</div>
+                    </div>
+                    <div className="w-24"><NumberInput value={l.quantity_per_unit} onChange={v => updateLabel(idx, { quantity_per_unit: v })} allowDecimal min={0} className="h-8 text-[12px]" disabled={!l.checked} /></div>
+                    <span className="text-[11px] text-muted-foreground">/unit</span>
+                    <span className="text-[11px] tabular-nums w-20 text-right">Butuh: {l.checked ? (Number(form.quantity) || 0) * (Number(l.quantity_per_unit) || 0) : 0}</span>
                   </div>
-                  <div className="w-24"><NumberInput value={l.quantity_per_unit} onChange={v => updateLabel(idx, { quantity_per_unit: v })} allowDecimal min={0} className="h-8 text-[12px]" disabled={!l.checked} /></div>
-                  <span className="text-[11px] text-muted-foreground">/unit</span>
-                  <span className="text-[11px] tabular-nums w-20 text-right">Butuh: {l.checked ? (Number(form.quantity) || 0) * (Number(l.quantity_per_unit) || 0) : 0}</span>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         </div>
         <div><Label className="text-[12.5px] mb-1">Operator *</Label><Input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} className="h-9 text-[13px]" /></div>
