@@ -4,6 +4,7 @@ import { useToast } from '@/components/ui/use-toast';
 import PageHeader from '@/components/PageHeader';
 import DataTable from '@/components/DataTable';
 import FormModal from '@/components/FormModal';
+import SearchableSelect from '@/components/SearchableSelect';
 import StatusBadge from '@/components/StatusBadge';
 import NumberInput from '@/components/NumberInput';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,15 @@ const itemTypes = [
 ];
 const itLabel = (v) => itemTypes.find(t => t.value === v)?.label || v;
 
+const UNIT_OPTIONS = [
+  { value: 'GRAM', label: 'Gram' },
+  { value: 'KG', label: 'Kg' },
+  { value: 'PCS', label: 'Pcs' },
+];
+const unitProps = (unit) => unit === 'KG' ? { conversion_factor: '1000', base_unit: 'gram' }
+  : unit === 'PCS' ? { conversion_factor: '1', base_unit: 'pcs' }
+  : { conversion_factor: '1', base_unit: 'gram' };
+
 const paymentMethods = [
   { value: 'cash', label: 'Tunai' },
   { value: 'transfer', label: 'Transfer' },
@@ -38,7 +48,7 @@ const fmtMoney = (v) => 'Rp ' + (Number(v) || 0).toLocaleString('id-ID');
 const toNum = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
 
 const emptyItem = () => ({
-  item_type: 'material', item_id: '', item_code: '', item_name: '', category_name: '',
+  item_type: '', item_id: '', item_code: '', item_name: '', category_name: '',
   batch_supplier: '', lot_number: '', production_date: '', expiry_date: '',
   quantity: '', unit: '', conversion_factor: '1', base_unit: '', base_quantity: '',
   unit_price: '', discount: '', tax: '', subtotal: '', notes: '',
@@ -210,7 +220,12 @@ export default function Purchases() {
   const onSelectItem = (idx, itemType, id) => {
     const master = getMaster(itemType, id);
     const snap = snapshotItem(itemType, master);
-    updateItem(idx, { item_type: itemType, item_id: id, ...snap, unit: snap.base_unit });
+    const unit = itemType === 'material' ? 'GRAM' : 'PCS';
+    updateItem(idx, { item_type: itemType, item_id: id, ...snap, unit, ...unitProps(unit) });
+  };
+
+  const onUnitChange = (idx, unit) => {
+    updateItem(idx, { unit, ...unitProps(unit) });
   };
 
   const addItemRow = () => setForm(prev => ({ ...prev, items: [...prev.items, emptyItem()] }));
@@ -221,11 +236,13 @@ export default function Purchases() {
     e?.preventDefault?.();
     if (!form.supplier_id) { toast({ type: 'warning', title: 'Supplier wajib dipilih' }); return; }
     if (!form.warehouse_id) { toast({ type: 'warning', title: 'Gudang tujuan wajib dipilih' }); return; }
-    const validItems = form.items.filter(it => it.item_id && toNum(it.quantity) > 0);
-    if (validItems.length === 0) { toast({ type: 'warning', title: 'Minimal satu item dengan quantity > 0' }); return; }
+    const validItems = form.items.filter(it => it.item_type && it.item_id && toNum(it.quantity) > 0 && it.unit);
+    if (validItems.length === 0) { toast({ type: 'warning', title: 'Minimal satu item lengkap (jenis, item, qty > 0, unit)' }); return; }
     for (const it of validItems) {
       if (toNum(it.unit_price) === null || toNum(it.unit_price) < 0) { toast({ type: 'warning', title: `Harga ${it.item_name} tidak valid` }); return; }
     }
+    const itemIds = validItems.map(i => i.item_id);
+    if (new Set(itemIds).size !== itemIds.length) { toast({ type: 'warning', title: 'Ada item duplikat', description: 'Gabungkan quantity atau hapus baris ganda' }); return; }
     setSubmitting(true);
     try {
       const payload = {
@@ -475,7 +492,6 @@ export default function Purchases() {
             </Select>
           </div>
           <div><Label className="text-[12.5px] mb-1">Tanggal Pembelian *</Label><Input type="date" value={form.purchase_date} onChange={e => onPurchaseDate(e.target.value)} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">No. Invoice Supplier</Label><Input value={form.supplier_invoice_number} onChange={e => setForm({ ...form, supplier_invoice_number: e.target.value })} className="h-9 text-[13px]" /></div>
           <div>
             <Label className="text-[12.5px] mb-1">Gudang Tujuan *</Label>
             <Select value={form.warehouse_id} onValueChange={onWarehouseChange}>
@@ -490,6 +506,7 @@ export default function Purchases() {
               <SelectContent>{paymentMethods.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
+          <div><Label className="text-[12.5px] mb-1">No. Invoice Supplier</Label><Input value={form.supplier_invoice_number} onChange={e => setForm({ ...form, supplier_invoice_number: e.target.value })} className="h-9 text-[13px]" /></div>
           {form.payment_method === 'tempo' && (
             <>
               <div><Label className="text-[12.5px] mb-1">Termin (hari)</Label><NumberInput value={form.payment_terms} onChange={v => onTermsChange(v)} allowDecimal={false} min={0} className="h-9 text-[13px]" /></div>
@@ -519,35 +536,28 @@ export default function Purchases() {
                   <div>
                     <Label className="text-[11.5px] mb-1">Jenis</Label>
                     <Select value={it.item_type} onValueChange={v => { const m = getMaster(v, it.item_id); updateItem(idx, { item_type: v, item_id: '', ...snapshotItem(v, m) }); }}>
-                      <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue placeholder="Pilih jenis" /></SelectTrigger>
                       <SelectContent>{itemTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div>
                     <Label className="text-[11.5px] mb-1">Item</Label>
-                    {it.item_type === 'material' ? (
-                      <Select value={it.item_id} onValueChange={v => onSelectItem(idx, 'material', v)}>
-                        <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue placeholder="Pilih bahan" /></SelectTrigger>
-                        <SelectContent className="max-h-60">{materials.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
-                      </Select>
-                    ) : (
-                      <Select value={it.item_id} onValueChange={v => onSelectItem(idx, it.item_type, v)}>
-                        <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue placeholder="Pilih barang" /></SelectTrigger>
-                        <SelectContent className="max-h-60">{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><Label className="text-[11.5px] mb-1">Batch/Lot</Label><Input value={it.batch_supplier} onChange={e => updateItem(idx, { batch_supplier: e.target.value })} placeholder="Batch" className="h-9 text-[13px]" /></div>
-                    <div><Label className="text-[11.5px] mb-1">Exp</Label><Input type="date" value={it.expiry_date} onChange={e => updateItem(idx, { expiry_date: e.target.value })} className="h-9 text-[13px]" /></div>
+                    <SearchableSelect
+                      value={it.item_id}
+                      onValueChange={v => onSelectItem(idx, it.item_type || 'material', v)}
+                      placeholder={it.item_type === 'material' ? 'Pilih bahan' : 'Pilih barang'}
+                      options={((it.item_type === 'material' || !it.item_type) ? materials : products).map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''}` }))}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div><Label className="text-[11.5px] mb-1">Qty</Label><NumberInput value={it.quantity} onChange={v => updateItem(idx, { quantity: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
-                    <div><Label className="text-[11.5px] mb-1">Unit</Label><Input value={it.unit} onChange={e => updateItem(idx, { unit: e.target.value })} placeholder="unit" className="h-9 text-[13px]" /></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><Label className="text-[11.5px] mb-1">Konversi</Label><NumberInput value={it.conversion_factor} onChange={v => updateItem(idx, { conversion_factor: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
-                    <div><Label className="text-[11.5px] mb-1">Qty Dasar</Label><div className="h-9 flex items-center text-[13px] tabular-nums text-muted-foreground">{(() => { const q = toNum(it.quantity); const c = toNum(it.conversion_factor) || 1; return q === null ? '—' : (q * c); })()}</div></div>
+                    <div>
+                      <Label className="text-[11.5px] mb-1">Unit</Label>
+                      <Select value={it.unit} onValueChange={v => onUnitChange(idx, v)}>
+                        <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue placeholder="Pilih unit" /></SelectTrigger>
+                        <SelectContent>{UNIT_OPTIONS.map(u => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div><Label className="text-[11.5px] mb-1">Harga</Label><NumberInput value={it.unit_price} onChange={v => updateItem(idx, { unit_price: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
@@ -568,11 +578,8 @@ export default function Purchases() {
                 <tr>
                   <th className="px-2 py-1.5 text-left font-semibold">Jenis</th>
                   <th className="px-2 py-1.5 text-left font-semibold">Item</th>
-                  <th className="px-2 py-1.5 text-left font-semibold">Batch/Lot</th>
-                  <th className="px-2 py-1.5 text-left font-semibold">Exp</th>
                   <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
                   <th className="px-2 py-1.5 text-left font-semibold">Unit</th>
-                  <th className="px-2 py-1.5 text-right font-semibold">Konversi</th>
                   <th className="px-2 py-1.5 text-right font-semibold">Qty Dasar</th>
                   <th className="px-2 py-1.5 text-right font-semibold">Harga</th>
                   <th className="px-2 py-1.5 text-right font-semibold">Diskon</th>
@@ -585,28 +592,26 @@ export default function Purchases() {
                   <tr key={idx} className="border-t border-border/50 align-top">
                     <td className="px-1 py-1">
                       <Select value={it.item_type} onValueChange={v => { const m = getMaster(v, it.item_id); updateItem(idx, { item_type: v, item_id: '', ...snapshotItem(v, m) }); }}>
-                        <SelectTrigger className="h-8 w-32 text-[11.5px]"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="h-8 w-32 text-[11.5px]"><SelectValue placeholder="Pilih" /></SelectTrigger>
                         <SelectContent>{itemTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
                       </Select>
                     </td>
-                    <td className="px-1 py-1">
-                      {it.item_type === 'material' ? (
-                        <Select value={it.item_id} onValueChange={v => onSelectItem(idx, 'material', v)}>
-                          <SelectTrigger className="h-8 w-44 text-[11.5px]"><SelectValue placeholder="Pilih bahan" /></SelectTrigger>
-                          <SelectContent className="max-h-60">{materials.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                      ) : (
-                        <Select value={it.item_id} onValueChange={v => onSelectItem(idx, it.item_type, v)}>
-                          <SelectTrigger className="h-8 w-44 text-[11.5px]"><SelectValue placeholder="Pilih barang" /></SelectTrigger>
-                          <SelectContent className="max-h-60">{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                      )}
+                    <td className="px-1 py-1 min-w-[180px]">
+                      <SearchableSelect
+                        value={it.item_id}
+                        onValueChange={v => onSelectItem(idx, it.item_type || 'material', v)}
+                        placeholder={it.item_type === 'material' ? 'Pilih bahan' : 'Pilih barang'}
+                        options={((it.item_type === 'material' || !it.item_type) ? materials : products).map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''}` }))}
+                        className="h-8 text-[11.5px]"
+                      />
                     </td>
-                    <td className="px-1 py-1"><Input value={it.batch_supplier} onChange={e => updateItem(idx, { batch_supplier: e.target.value })} placeholder="Batch" className="h-8 w-24 text-[11.5px]" /></td>
-                    <td className="px-1 py-1"><Input type="date" value={it.expiry_date} onChange={e => updateItem(idx, { expiry_date: e.target.value })} className="h-8 w-32 text-[11.5px]" /></td>
                     <td className="px-1 py-1"><NumberInput value={it.quantity} onChange={v => updateItem(idx, { quantity: v })} allowDecimal min={0} className="h-8 w-16 text-right text-[11.5px]" /></td>
-                    <td className="px-1 py-1"><Input value={it.unit} onChange={e => updateItem(idx, { unit: e.target.value })} placeholder="unit" className="h-8 w-16 text-[11.5px]" /></td>
-                    <td className="px-1 py-1"><NumberInput value={it.conversion_factor} onChange={v => updateItem(idx, { conversion_factor: v })} allowDecimal min={0} className="h-8 w-16 text-right text-[11.5px]" /></td>
+                    <td className="px-1 py-1">
+                      <Select value={it.unit} onValueChange={v => onUnitChange(idx, v)}>
+                        <SelectTrigger className="h-8 w-20 text-[11.5px]"><SelectValue placeholder="Pilih" /></SelectTrigger>
+                        <SelectContent>{UNIT_OPTIONS.map(u => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </td>
                     <td className="px-1 py-1 text-right tabular-nums text-[11.5px] text-muted-foreground">{(() => { const q = toNum(it.quantity); const c = toNum(it.conversion_factor) || 1; return q === null ? '—' : (q * c); })()}</td>
                     <td className="px-1 py-1"><NumberInput value={it.unit_price} onChange={v => updateItem(idx, { unit_price: v })} allowDecimal min={0} className="h-8 w-24 text-right text-[11.5px]" /></td>
                     <td className="px-1 py-1"><NumberInput value={it.discount} onChange={v => updateItem(idx, { discount: v })} allowDecimal min={0} className="h-8 w-20 text-right text-[11.5px]" /></td>
