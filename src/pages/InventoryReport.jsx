@@ -26,7 +26,7 @@ const STATUS_LABEL = {
 const normalizeStatus = (b) =>
   (!b.inventory_status && b.item_type === 'material') ? 'RAW_MATERIAL' : (b.inventory_status || '');
 
-const fmtMoney = (v) => 'Rp ' + (Number(v) || 0).toLocaleString('id-ID');
+const fmtMoney = (v) => 'Rp ' + (Number(v) || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtQty = (v) => (Number(v) || 0).toLocaleString('id-ID', { maximumFractionDigits: 3 });
 
 function MiniKpi({ icon: Icon, label, value, color }) {
