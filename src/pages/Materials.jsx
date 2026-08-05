@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import NumberInput from '@/components/NumberInput';
+import SearchableSelect from '@/components/SearchableSelect';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { generateMaterialCode, generatePremixMaterialCode } from '@/lib/sequence';
 
@@ -68,12 +69,32 @@ export default function Materials() {
     finally { setLoading(false); }
   }, [toast]);
 
+  // Refetch kategori bahan aktif tiap kali form dibuka agar kategori baru langsung muncul
+  // tanpa hard refresh, dan tetap tampilkan kategori material yang sedang diedit walau nonaktif.
+  const [catError, setCatError] = useState(false);
+  const refreshCategories = useCallback(async (currentCategoryId) => {
+    try {
+      setCatError(false);
+      let cats = await base44.entities.Category.filter({ category_type: 'bahan', is_active: true });
+      if (currentCategoryId && !cats.some(c => c.id === currentCategoryId)) {
+        try {
+          const cur = await base44.entities.Category.get(currentCategoryId);
+          if (cur && cur.category_type === 'bahan') cats = [cur, ...cats];
+        } catch { /* kategori mungkin sudah dihapus; abaikan */ }
+      }
+      setCategories(cats);
+    } catch {
+      setCatError(true);
+    }
+  }, []);
+
   useEffect(() => { loadData(); }, [loadData]);
 
-  const openAdd = () => { setEditing(null); setForm({ code: '', name: '', material_type: 'RAW_MATERIAL', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, is_internally_produced: false, concentration_value: '', concentration_unit: 'PERCENT_WW', carrier_material_id: '', default_density: '', notes: '' }); setModalOpen(true); };
+  const openAdd = () => { setEditing(null); setForm({ code: '', name: '', material_type: 'RAW_MATERIAL', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, is_internally_produced: false, concentration_value: '', concentration_unit: 'PERCENT_WW', carrier_material_id: '', default_density: '', notes: '' }); refreshCategories(null); setModalOpen(true); };
   const openEdit = (item) => {
     setEditing(item);
     setForm({ code: item.code, name: item.name, material_type: item.material_type || 'RAW_MATERIAL', category_id: item.category_id || '', material_category: item.material_category, supplier_id: item.supplier_id || '', unit: item.unit, density: item.density ?? '', pg_content: item.pg_content ?? '', vg_content: item.vg_content ?? '', nicotine_strength: item.nicotine_strength ?? '', min_stock: item.min_stock ?? '', last_purchase_price: item.last_purchase_price ?? '', is_active: item.is_active, is_internally_produced: item.is_internally_produced ?? false, concentration_value: item.concentration_value ?? '', concentration_unit: item.concentration_unit || 'PERCENT_WW', carrier_material_id: item.carrier_material_id || '', default_density: item.default_density ?? '', notes: item.notes || '' });
+    refreshCategories(item.category_id);
     setModalOpen(true);
   };
 
@@ -161,10 +182,22 @@ export default function Materials() {
           <div><Label className="text-[12.5px] mb-1">Nama Bahan *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9 text-[13px]" /></div>
           <div>
             <Label className="text-[12.5px] mb-1">Kategori</Label>
-            <Select value={form.category_id} onValueChange={v => setForm({ ...form, category_id: v })}>
-              <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
-              <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-            </Select>
+            {catError ? (
+              <div className="flex items-center gap-2 h-9">
+                <span className="text-[12px] text-destructive">Daftar kategori gagal dimuat.</span>
+                <Button type="button" variant="outline" size="sm" onClick={() => refreshCategories(editing?.category_id)}>Coba Lagi</Button>
+              </div>
+            ) : categories.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground italic">Belum ada kategori bahan. Tambahkan kategori pada Master Kategori.</p>
+            ) : (
+              <SearchableSelect
+                value={form.category_id}
+                onValueChange={v => setForm({ ...form, category_id: v })}
+                options={categories.map(c => ({ value: c.id, label: c.is_active === false ? `${c.name} (Nonaktif)` : c.name, keywords: c.code }))}
+                placeholder="Cari kategori bahan..."
+                className="h-9"
+              />
+            )}
           </div>
           <div>
             <Label className="text-[12.5px] mb-1">Jenis Bahan</Label>
