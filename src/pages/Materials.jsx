@@ -11,7 +11,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import NumberInput from '@/components/NumberInput';
-import SearchableSelect from '@/components/SearchableSelect';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { generateMaterialCode, generatePremixMaterialCode } from '@/lib/sequence';
 
@@ -233,13 +232,12 @@ export default function Materials() {
             ) : categories.length === 0 ? (
               <p className="text-[12px] text-muted-foreground italic">Belum ada kategori {catTypeLabel(form.material_type)}. Tambahkan di Master Kategori (Jenis: {catTypeLabel(form.material_type)}).</p>
             ) : (
-              <SearchableSelect
-                value={form.category_id}
-                onValueChange={v => setForm({ ...form, category_id: v })}
-                options={categories.map(c => ({ value: c.id, label: c.is_active === false ? `${c.name} (Nonaktif)` : c.name, keywords: c.code }))}
-                placeholder={`Cari kategori ${catTypeLabel(form.material_type)}...`}
-                className="h-9"
-              />
+              <Select value={form.category_id} onValueChange={v => setForm({ ...form, category_id: v })}>
+                <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder={`Pilih kategori ${catTypeLabel(form.material_type)}`} /></SelectTrigger>
+                <SelectContent>
+                  {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.is_active === false ? `${c.name} (Nonaktif)` : c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             )}
           </div>
           <div>
