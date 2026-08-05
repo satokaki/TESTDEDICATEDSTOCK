@@ -98,7 +98,8 @@
       "enum": [
         "gram",
         "mililiter",
-        "unit"
+        "unit",
+        "pcs"
       ],
       "default": "gram"
     },

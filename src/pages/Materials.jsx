@@ -44,7 +44,7 @@ const materialCategories = [
   { value: 'lainnya', label: 'Lainnya' },
 ];
 
-const units = [{ value: 'gram', label: 'Gram' }, { value: 'mililiter', label: 'Mililiter' }, { value: 'unit', label: 'Unit' }];
+const units = [{ value: 'gram', label: 'Gram' }, { value: 'mililiter', label: 'Mililiter' }, { value: 'unit', label: 'Unit' }, { value: 'pcs', label: 'Pcs' }];
 
 // Tipe yang masuk resep → perlu field teknis (density/PG/VG/nicotine/jenis/supplier).
 // Tipe kemasan/label/botol/stiker/cukai → form minimal.
