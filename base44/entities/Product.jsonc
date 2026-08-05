@@ -52,7 +52,14 @@
     },
     "unit": {
       "type": "string",
-      "default": "unit"
+      "enum": [
+        "kg",
+        "gram",
+        "pcs",
+        "mililiter",
+        "unit"
+      ],
+      "default": "pcs"
     },
     "sale_price": {
       "type": "number",

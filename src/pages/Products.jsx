@@ -29,6 +29,12 @@ const productTypes = [
 ];
 const ptLabel = (v) => productTypes.find(t => t.value === v)?.label || v;
 
+const units = [
+  { value: 'kg', label: 'Kg' },
+  { value: 'gram', label: 'Gram' },
+  { value: 'pcs', label: 'Pcs' },
+];
+
 export default function Products() {
   const { toast } = useToast();
   const [data, setData] = useState([]);
@@ -161,7 +167,13 @@ export default function Products() {
           <div><Label className="text-[12.5px] mb-1">SKU</Label><Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Barcode</Label><Input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Ukuran Botol (ml)</Label><NumberInput value={form.bottle_size} onChange={v => setForm({ ...form, bottle_size: v })} allowDecimal maxDecimals={1} min={0} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Satuan</Label><Input value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div>
+            <Label className="text-[12.5px] mb-1">Satuan</Label>
+            <Select value={units.some(u => u.value === form.unit) ? form.unit : 'pcs'} onValueChange={v => setForm({ ...form, unit: v })}>
+              <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+              <SelectContent>{units.map(u => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
           <div><Label className="text-[12.5px] mb-1">Harga Jual (Rp)</Label><NumberInput value={form.sale_price} onChange={v => setForm({ ...form, sale_price: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Stok Minimum</Label><NumberInput value={form.min_stock} onChange={v => setForm({ ...form, min_stock: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
         </div>
