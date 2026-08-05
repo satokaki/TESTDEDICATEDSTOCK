@@ -10,6 +10,7 @@ import { Boxes, Package, Layers, AlertTriangle, Wallet, Download } from 'lucide-
 
 const STATUS_LABEL = {
   RAW_MATERIAL: 'Bahan Baku',
+  PREMIX: 'Premix',
   BULK: 'Hasil Mixing',
   READY_FOR_LABELING: 'Siap Labeling',
   UNEXCISED: 'Belum Cukai',
@@ -17,6 +18,11 @@ const STATUS_LABEL = {
   QUARANTINE: 'Karantina',
   REJECTED: 'Ditolak',
 };
+
+// Materials keep inventory_status '' (backward-compat with purchase-created
+// balances) — normalize to RAW_MATERIAL for display & filtering.
+const normalizeStatus = (b) =>
+  (!b.inventory_status && b.item_type === 'material') ? 'RAW_MATERIAL' : (b.inventory_status || '');
 
 const fmtMoney = (v) => 'Rp ' + (Number(v) || 0).toLocaleString('id-ID');
 const fmtQty = (v) => (Number(v) || 0).toLocaleString('id-ID', { maximumFractionDigits: 3 });
@@ -73,18 +79,13 @@ export default function InventoryReport() {
       .filter((b) => {
         if (!b.item_id) return false;
         if (!filterStatus) return true;
-        const norm = (!b.inventory_status && b.item_type === 'material') ? 'RAW_MATERIAL' : b.inventory_status;
-        return norm === filterStatus;
+        return normalizeStatus(b) === filterStatus;
       })
       .map((b) => {
         const mat = materialById[b.item_id];
         const unitCost = Number(mat?.last_purchase_price) || 0;
         const qty = Number(b.quantity) || 0;
-        // Materials keep inventory_status '' (backward-compat with purchase-created
-        // balances) — normalize to RAW_MATERIAL for display & filtering.
-        const normalizedStatus = (!b.inventory_status && b.item_type === 'material')
-          ? 'RAW_MATERIAL'
-          : b.inventory_status;
+        const normalizedStatus = normalizeStatus(b);
         return {
           ...b,
           inventory_status: normalizedStatus,
@@ -104,9 +105,14 @@ export default function InventoryReport() {
       const avail = mBalances.reduce((s, b) => s + (Number(b.available_quantity) || 0), 0);
       return m.min_stock > 0 && avail <= m.min_stock;
     }).length;
-    const totalNilai = rows.reduce((s, r) => s + (Number(r.nilai_stok) || 0), 0);
+    // Total nilai seluruh stok (tidak terpengaruh filter), agar KPI konsisten.
+    const totalNilai = balances.reduce((s, b) => {
+      const mat = materialById[b.item_id];
+      const unitCost = Number(mat?.last_purchase_price) || 0;
+      return s + (Number(b.quantity) || 0) * unitCost;
+    }, 0);
     return { activeMaterials, activeProducts, totalBaris, lowStock, totalNilai };
-  }, [materials, products, balances, rows]);
+  }, [materials, products, balances, materialById]);
 
   const exportCSV = () => {
     const headers = ['Kode', 'Nama', 'Status', 'Batch', 'Gudang', 'Qty', 'Reserved', 'Tersedia', 'Unit', 'Nilai Stok'];
