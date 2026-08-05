@@ -11,7 +11,10 @@ import { Download } from 'lucide-react';
 import PdfButton from '@/components/PdfButton';
 import { exportReportToPDF } from '@/lib/pdfExport';
 import { useAuth } from '@/lib/AuthContext';
-import { STAGE_LABEL } from '@/lib/inventoryDisplay';
+import { STAGE_LABEL, getInventoryDisplayName } from '@/lib/inventoryDisplay';
+import { loadInventoryCostContext, resolveBalanceUnitCost } from '@/lib/inventoryCost';
+
+const fmtMoney = (v) => 'Rp ' + (Number(v) || 0).toLocaleString('id-ID');
 
 const transactionTypeLabels = {
   opening_balance: 'Opening Balance',
@@ -49,18 +52,22 @@ export default function StockCard() {
   const { user } = useAuth();
   const [data, setData] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
+  const [materialById, setMaterialById] = useState({});
+  const [stageCostIndex, setStageCostIndex] = useState({});
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ item_type: '', transaction_type: '', inventory_status: '', warehouse_id: '', item_name: '', date_from: '', date_to: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [items, whs] = await Promise.all([
+      const [items, whs, ctx] = await Promise.all([
         base44.entities.StockLedger.list('-created_date', 500),
         base44.entities.Warehouse.filter({ is_active: true }).catch(() => []),
+        loadInventoryCostContext().catch(() => null),
       ]);
       setData(items);
       setWarehouses(whs);
+      if (ctx) { setMaterialById(ctx.materialById); setStageCostIndex(ctx.stageCostIndex); }
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
     finally { setLoading(false); }
   }, [toast]);
@@ -71,7 +78,10 @@ export default function StockCard() {
     const rows = data.filter(item => {
       if (filters.item_type && item.item_type !== filters.item_type) return false;
       if (filters.transaction_type && item.transaction_type !== filters.transaction_type) return false;
-      if (filters.inventory_status && item.inventory_status !== filters.inventory_status) return false;
+      if (filters.inventory_status) {
+        const norm = (!item.inventory_status && item.item_type === 'material') ? 'RAW_MATERIAL' : item.inventory_status;
+        if (norm !== filters.inventory_status) return false;
+      }
       if (filters.warehouse_id && item.warehouse_id !== filters.warehouse_id) return false;
       if (filters.item_name && !item.item_name?.toLowerCase().includes(filters.item_name.toLowerCase())) return false;
       if (filters.date_from && item.transaction_date?.slice(0, 10) < filters.date_from) return false;
@@ -90,20 +100,22 @@ export default function StockCard() {
       const key = `${r.item_id}|${r.inventory_status || ''}`;
       const delta = (Number(r.quantity_in) || 0) - (Number(r.quantity_out) || 0);
       running[key] = (running[key] || 0) + delta;
-      return { ...r, running_balance: running[key] };
+      const unitCost = resolveBalanceUnitCost(r, { materialById, stageCostIndex });
+      return { ...r, running_balance: running[key], unit_cost: unitCost, nominal: delta * unitCost };
     });
 
     // Kembalikan ke urutan created_date descending agar konsisten dengan DataTable.
     return result.sort((a, b) => (b.created_date || '').localeCompare(a.created_date || ''));
-  }, [data, filters]);
+  }, [data, filters, materialById, stageCostIndex]);
 
   const exportCSV = () => {
-    const headers = ['Tanggal', 'No. Transaksi', 'Tipe', 'Item', 'Batch', 'Gudang', 'Masuk', 'Keluar', 'Sisa', 'Satuan', 'Referensi'];
+    const headers = ['Tanggal', 'No. Transaksi', 'Tipe', 'Item', 'Batch', 'Gudang', 'Masuk', 'Keluar', 'Sisa', 'Satuan', 'HPP/Unit', 'Nominal', 'Referensi'];
     const rows = filtered.map(r => [
       r.transaction_date?.slice(0, 19).replace('T', ' '),
       r.transaction_number || '', transactionTypeLabels[r.transaction_type] || r.transaction_type,
       r.item_name || '', r.batch_number || '', r.warehouse_name || '',
-      r.quantity_in || 0, r.quantity_out || 0, r.running_balance ?? 0, r.unit || '', r.reference_number || '',
+      r.quantity_in || 0, r.quantity_out || 0, r.running_balance ?? 0, r.unit || '',
+      r.unit_cost || 0, r.nominal || 0, r.reference_number || '',
     ]);
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -128,6 +140,8 @@ export default function StockCard() {
       { key: 'quantity_out', header: 'Keluar', align: 'right' },
       { key: 'running_balance', header: 'Sisa', align: 'right' },
       { key: 'unit', header: 'Satuan' },
+      { key: 'unit_cost', header: 'HPP/Unit', align: 'right' },
+      { key: 'nominal', header: 'Nominal', align: 'right' },
       { key: 'reference_number', header: 'Referensi' },
     ],
     rows: filtered.map(r => ({
@@ -138,7 +152,8 @@ export default function StockCard() {
       warehouse_name: r.warehouse_name || '',
       quantity_in: r.quantity_in || '', quantity_out: r.quantity_out || '',
       running_balance: r.running_balance ?? 0,
-      unit: r.unit || '', reference_number: r.reference_number || '',
+      unit: r.unit || '', unit_cost: r.unit_cost || 0, nominal: r.nominal || 0,
+      reference_number: r.reference_number || '',
     })),
     fileName: `kartu-stok-${Date.now()}.pdf`,
   });
@@ -147,7 +162,7 @@ export default function StockCard() {
     { key: 'transaction_date', header: 'Tanggal', sortable: true, render: (row) => row.transaction_date?.slice(0, 19).replace('T', ' ') },
     { key: 'transaction_number', header: 'No. Transaksi', className: 'font-mono' },
     { key: 'transaction_type', header: 'Tipe', render: (row) => <span className="text-[10.5px] px-1.5 py-0.5 bg-muted rounded">{transactionTypeLabels[row.transaction_type] || row.transaction_type}</span> },
-    { key: 'item_name', header: 'Item', className: 'font-medium' },
+    { key: 'item_name', header: 'Item', className: 'font-medium', render: (row) => row.item_type === 'product' ? getInventoryDisplayName(row.item_name, row.inventory_status) : (row.item_name || '—') },
     { key: 'inventory_status', header: 'Stage', render: (row) => row.inventory_status ? <span className="text-[10.5px] px-1.5 py-0.5 bg-muted rounded">{STAGE_LABEL[row.inventory_status] || row.inventory_status}</span> : '—' },
     { key: 'batch_number', header: 'Batch', className: 'font-mono', render: (row) => row.batch_number || '—' },
     { key: 'warehouse_name', header: 'Gudang', render: (row) => row.warehouse_name || '—' },
@@ -155,6 +170,8 @@ export default function StockCard() {
     { key: 'quantity_out', header: 'Keluar', render: (row) => row.quantity_out > 0 ? <span className="text-red-600 tabular-nums">-{row.quantity_out}</span> : '' },
     { key: 'running_balance', header: 'Sisa', render: (row) => <span className="tabular-nums font-semibold text-foreground">{row.running_balance ?? 0}</span> },
     { key: 'unit', header: 'Satuan' },
+    { key: 'unit_cost', header: 'HPP/Unit', render: (row) => <span className="tabular-nums text-muted-foreground">{fmtMoney(row.unit_cost)}</span> },
+    { key: 'nominal', header: 'Nominal', render: (row) => <span className={`tabular-nums ${row.nominal >= 0 ? 'text-foreground' : 'text-red-600'}`}>{fmtMoney(row.nominal)}</span> },
     { key: 'reference_number', header: 'Referensi', className: 'font-mono', render: (row) => row.reference_number || '—' },
   ];
 
@@ -189,6 +206,8 @@ export default function StockCard() {
           <Select value={filters.inventory_status} onValueChange={v => setFilters({ ...filters, inventory_status: v })}>
             <SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder="Semua" /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="RAW_MATERIAL">Bahan Baku</SelectItem>
+              <SelectItem value="PREMIX">Premix</SelectItem>
               <SelectItem value="BULK">Bulk (Produksi)</SelectItem>
               <SelectItem value="READY_FOR_LABELING">Siap Labeling</SelectItem>
               <SelectItem value="UNEXCISED">Belum Cukai</SelectItem>

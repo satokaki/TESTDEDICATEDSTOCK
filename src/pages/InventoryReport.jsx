@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Boxes, Package, Layers, AlertTriangle, Wallet, Download } from 'lucide-react';
+import { resolveBalanceUnitCost, buildStageCostIndex, resolvePgVgMaterials } from '@/lib/inventoryCost';
+import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
 
 const STATUS_LABEL = {
   RAW_MATERIAL: 'Bahan Baku',
@@ -48,20 +50,29 @@ export default function InventoryReport() {
   const [balances, setBalances] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [products, setProducts] = useState([]);
+  const [recipes, setRecipes] = useState([]);
+  const [ingredients, setIngredients] = useState([]);
+  const [mappings, setMappings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [b, m, p] = await Promise.all([
+      const [b, m, p, recs, ings, maps] = await Promise.all([
         base44.entities.StockBalance.list('-updated_date', 1000),
         base44.entities.Material.list(),
         base44.entities.Product.list(),
+        base44.entities.Recipe.list('-created_date', 500),
+        base44.entities.RecipeIngredient.list('-created_date', 3000),
+        base44.entities.ProductComponentMapping.list('-created_date', 3000),
       ]);
       setBalances(b);
       setMaterials(m);
       setProducts(p);
+      setRecipes(recs);
+      setIngredients(ings);
+      setMappings(maps);
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data inventaris' }); }
     finally { setLoading(false); }
   }, [toast]);
@@ -74,6 +85,13 @@ export default function InventoryReport() {
     return map;
   }, [materials]);
 
+  const { pgMaterial, vgMaterial } = useMemo(() => resolvePgVgMaterials(materials), [materials]);
+
+  const stageCostIndex = useMemo(
+    () => buildStageCostIndex({ products, recipes, ingredients, materials, mappings, pgMaterial, vgMaterial }),
+    [products, recipes, ingredients, materials, mappings, pgMaterial, vgMaterial]
+  );
+
   const rows = useMemo(() => {
     return balances
       .filter((b) => {
@@ -82,19 +100,23 @@ export default function InventoryReport() {
         return normalizeStatus(b) === filterStatus;
       })
       .map((b) => {
-        const mat = materialById[b.item_id];
-        const unitCost = Number(mat?.last_purchase_price) || 0;
         const qty = Number(b.quantity) || 0;
         const normalizedStatus = normalizeStatus(b);
+        const unitCost = resolveBalanceUnitCost(
+          { item_type: b.item_type, item_id: b.item_id, inventory_status: normalizedStatus },
+          { materialById, stageCostIndex }
+        );
+        const isProduct = b.item_type === 'product';
         return {
           ...b,
           inventory_status: normalizedStatus,
           status_label: STATUS_LABEL[normalizedStatus] || normalizedStatus || '—',
+          display_name: isProduct ? getInventoryDisplayName(b.item_name, normalizedStatus) : (b.item_name || '—'),
           unit_cost: unitCost,
           nilai_stok: qty * unitCost,
         };
       });
-  }, [balances, materialById, filterStatus]);
+  }, [balances, materialById, stageCostIndex, filterStatus]);
 
   const summary = useMemo(() => {
     const activeMaterials = materials.filter((m) => m.is_active).length;
@@ -110,11 +132,11 @@ export default function InventoryReport() {
   }, [materials, products, rows]);
 
   const exportCSV = () => {
-    const headers = ['Kode', 'Nama', 'Status', 'Batch', 'Gudang', 'Qty', 'Reserved', 'Tersedia', 'Unit', 'Nilai Stok'];
+    const headers = ['Kode', 'Nama', 'Status', 'Batch', 'Gudang', 'Qty', 'Reserved', 'Tersedia', 'Unit', 'HPP/Unit', 'Nilai Stok'];
     const csv = [headers, ...rows.map((r) => [
-      r.item_code || '', r.item_name || '', r.status_label, r.batch_number || '',
+      r.item_code || '', r.display_name || r.item_name || '', r.status_label, r.batch_number || '',
       r.warehouse_name || '', r.quantity, r.reserved_quantity, r.available_quantity,
-      r.unit || '', r.nilai_stok,
+      r.unit || '', r.unit_cost, r.nilai_stok,
     ])].map((row) => row.map((c) => `"${c}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -126,14 +148,15 @@ export default function InventoryReport() {
 
   const columns = [
     { key: 'item_code', header: 'Kode', sortable: true, className: 'font-mono font-medium' },
-    { key: 'item_name', header: 'Nama', sortable: true, className: 'font-medium' },
+    { key: 'display_name', header: 'Nama', sortable: true, className: 'font-medium' },
     { key: 'status_label', header: 'Status', render: (r) => <span className="text-[11.5px] px-2 py-0.5 rounded bg-muted">{r.status_label}</span> },
     { key: 'batch_number', header: 'Batch', render: (r) => r.batch_number || '—' },
     { key: 'warehouse_name', header: 'Gudang', render: (r) => r.warehouse_name || '—' },
     { key: 'quantity', header: 'Qty', sortable: true, render: (r) => <span className="tabular-nums">{fmtQty(r.quantity)} {r.unit || ''}</span> },
     { key: 'reserved_quantity', header: 'Reserved', render: (r) => <span className="tabular-nums text-muted-foreground">{fmtQty(r.reserved_quantity)}</span> },
     { key: 'available_quantity', header: 'Tersedia', render: (r) => <span className="tabular-nums font-medium">{fmtQty(r.available_quantity)}</span> },
-    { key: 'nilai_stok', header: 'Nilai Stok', sortable: true, render: (r) => <span className="tabular-nums">{fmtMoney(r.nilai_stok)}</span> },
+    { key: 'unit_cost', header: 'HPP/Unit', sortable: true, render: (r) => <span className="tabular-nums text-muted-foreground">{fmtMoney(r.unit_cost)}</span> },
+    { key: 'nilai_stok', header: 'Nilai Stok', sortable: true, render: (r) => <span className="tabular-nums font-medium">{fmtMoney(r.nilai_stok)}</span> },
   ];
 
   return (
@@ -170,7 +193,7 @@ export default function InventoryReport() {
         data={rows}
         loading={loading}
         emptyMessage="Belum ada data stok"
-        searchKeys={['item_code', 'item_name', 'batch_number', 'warehouse_name']}
+        searchKeys={['item_code', 'item_name', 'display_name', 'batch_number', 'warehouse_name']}
         searchPlaceholder="Cari item, batch, gudang..."
       />
     </div>

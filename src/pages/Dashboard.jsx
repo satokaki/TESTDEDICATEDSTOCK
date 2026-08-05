@@ -5,6 +5,7 @@ import {
   FlaskConical, Factory, Package, Tag, Stamp, ShoppingCart, Wallet,
   ClipboardList, AlertTriangle, TrendingUp, Users, Boxes, Activity
 } from 'lucide-react';
+import { loadInventoryCostContext, resolveBalanceUnitCost } from '@/lib/inventoryCost';
 
 function KpiCard({ icon: Icon, label, value, color, onClick }) {
   return (
@@ -57,6 +58,7 @@ export default function Dashboard() {
     piutangJatuhTempo: 0,
   });
   const [recentActivity, setRecentActivity] = useState([]);
+  const [inventoryValue, setInventoryValue] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -66,7 +68,7 @@ export default function Dashboard() {
   const loadDashboard = async () => {
     setLoading(true);
     try {
-      const [materials, productions, bottling, labeling, excise, products, sales, audit] = await Promise.all([
+      const [materials, productions, bottling, labeling, excise, products, sales, audit, balances, costCtx] = await Promise.all([
         base44.entities.Material.list(),
         base44.entities.ProductionOrder.list(),
         base44.entities.BottlingOrder.list(),
@@ -75,6 +77,8 @@ export default function Dashboard() {
         base44.entities.Product.list(),
         base44.entities.Sale.list('-created_date', 50),
         base44.entities.AuditLog.list('-created_date', 10),
+        base44.entities.StockBalance.list('-updated_date', 1000).catch(() => []),
+        loadInventoryCostContext().catch(() => null),
       ]);
 
       const today = new Date().toISOString().slice(0, 10);
@@ -98,6 +102,13 @@ export default function Dashboard() {
         totalPiutang,
         piutangJatuhTempo: 0,
       });
+      if (costCtx) {
+        const invVal = balances.reduce(
+          (s, b) => s + (Number(b.quantity) || 0) * resolveBalanceUnitCost(b, { materialById: costCtx.materialById, stageCostIndex: costCtx.stageCostIndex }),
+          0
+        );
+        setInventoryValue(invVal);
+      }
       setRecentActivity(audit);
     } catch (e) {
       console.error('Dashboard load error', e);
@@ -125,6 +136,7 @@ export default function Dashboard() {
         <KpiCard icon={Tag} label="Siap Labeling" value={stats.siapLabeling} color="bg-purple-50 text-purple-600" onClick={() => navigate('/labeling')} />
         <KpiCard icon={Stamp} label="Belum Cukai" value={stats.belumCukai} color="bg-orange-50 text-orange-600" onClick={() => navigate('/excise')} />
         <KpiCard icon={TrendingUp} label="Siap Jual" value={stats.siapJual} color="bg-emerald-50 text-emerald-600" />
+        <KpiCard icon={Wallet} label="Nilai Persediaan" value={fmtMoney(inventoryValue)} color="bg-emerald-50 text-emerald-600" onClick={() => navigate('/reports/inventory')} />
       </div>
 
       {/* Sales KPIs */}
