@@ -105,14 +105,9 @@ export default function InventoryReport() {
       const avail = mBalances.reduce((s, b) => s + (Number(b.available_quantity) || 0), 0);
       return m.min_stock > 0 && avail <= m.min_stock;
     }).length;
-    // Total nilai seluruh stok (tidak terpengaruh filter), agar KPI konsisten.
-    const totalNilai = balances.reduce((s, b) => {
-      const mat = materialById[b.item_id];
-      const unitCost = Number(mat?.last_purchase_price) || 0;
-      return s + (Number(b.quantity) || 0) * unitCost;
-    }, 0);
+    const totalNilai = rows.reduce((s, r) => s + (Number(r.nilai_stok) || 0), 0);
     return { activeMaterials, activeProducts, totalBaris, lowStock, totalNilai };
-  }, [materials, products, balances, materialById]);
+  }, [materials, products, rows]);
 
   const exportCSV = () => {
     const headers = ['Kode', 'Nama', 'Status', 'Batch', 'Gudang', 'Qty', 'Reserved', 'Tersedia', 'Unit', 'Nilai Stok'];
