@@ -64,8 +64,14 @@ export async function postPurchase(purchaseId) {
       reference_id: purchase.id,
       notes: `Penerimaan pembelian ${purchase.purchase_number}`,
     });
-    // Update last purchase price (semua item pembelian adalah material)
-    try { await base44.entities.Material.update(it.item_id, { last_purchase_price: Number(it.unit_price) || 0 }); } catch { /* ignore */ }
+    // Update last purchase price (semua item pembelian adalah material).
+    // unit_price = harga per SATUAN BELI (mis. Rp600.000/KG).
+    // last_purchase_price HARUS per SATUAN DASAR (mis. Rp600/gram),
+    // karena HPP & inventory valuation membacanya sebagai per gram/ml/pcs.
+    // => base_unit_cost = unit_price / conversion_factor.
+    const conv = Number(it.conversion_factor) || 1;
+    const baseUnitCost = conv > 0 ? (Number(it.unit_price) || 0) / conv : (Number(it.unit_price) || 0);
+    try { await base44.entities.Material.update(it.item_id, { last_purchase_price: baseUnitCost }); } catch { /* ignore */ }
   }
 
   // 2. Supplier payable for tempo
