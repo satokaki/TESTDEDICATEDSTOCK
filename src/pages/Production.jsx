@@ -21,6 +21,7 @@ import { exportDocumentToPDF } from '@/lib/pdfExport';
 import { useAuth } from '@/lib/AuthContext';
 import { canSelectRecipeForProduction, isRecipeFormulaHidden } from '@/lib/permissions';
 import { Checkbox } from '@/components/ui/checkbox';
+import { formatNumber } from '@/lib/format';
 
 // Weighing order: flavor → sweetener → cooling → additive/premix → nicotine → VG → PG
 const PRODUCTION_ORDER = {
@@ -437,10 +438,10 @@ export default function Production() {
             <div className="grid grid-cols-3 gap-2 text-[11.5px]">
               <div className="bg-muted/40 rounded px-2 py-1.5">Recipe Type: <b>{isPremix ? 'PREMIX' : 'FINISHED_PRODUCT'}</b></div>
               <div className="bg-muted/40 rounded px-2 py-1.5">Calculation Basis: <b>{isPremix ? basis : '—'}</b></div>
-              <div className="bg-muted/40 rounded px-2 py-1.5">Target Produksi: <b>{Number(form.target_volume || 0).toLocaleString('id-ID')} {targetUnit}</b></div>
+              <div className="bg-muted/40 rounded px-2 py-1.5">Target Produksi: <b>{formatNumber(form.target_volume)} {targetUnit}</b></div>
               <div className="bg-muted/40 rounded px-2 py-1.5">Satuan: <b>{isPremix ? (basis === 'W_W' ? 'Gram' : 'ml') : 'ml'}</b></div>
               {!formulaHidden && <div className="bg-muted/40 rounded px-2 py-1.5">Total Formula: <b>{totalFormulaPct.toFixed(2)}%</b></div>}
-              <div className="bg-muted/40 rounded px-2 py-1.5">Total Kebutuhan: <b>{totalRequirement.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} gram</b></div>
+              <div className="bg-muted/40 rounded px-2 py-1.5">Total Kebutuhan: <b>{formatNumber(totalRequirement, 2)} gram</b></div>
             </div>
           </div>
         )}

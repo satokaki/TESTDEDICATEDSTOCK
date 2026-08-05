@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Boxes, Package, Layers, AlertTriangle, Wallet, Download } from 'lucide-react';
 import { resolveBalanceUnitCost, buildStageCostIndex, resolvePgVgMaterials } from '@/lib/inventoryCost';
 import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
-import { formatCurrency as fmtMoney } from '@/lib/format';
+import { formatCurrency as fmtMoney, formatNumber } from '@/lib/format';
 
 const STATUS_LABEL = {
   RAW_MATERIAL: 'Bahan Baku',
@@ -27,7 +27,7 @@ const STATUS_LABEL = {
 const normalizeStatus = (b) =>
   (!b.inventory_status && b.item_type === 'material') ? 'RAW_MATERIAL' : (b.inventory_status || '');
 
-const fmtQty = (v) => (Number(v) || 0).toLocaleString('id-ID', { maximumFractionDigits: 3 });
+const fmtQty = (v) => formatNumber(v, 3);
 
 function MiniKpi({ icon: Icon, label, value, color }) {
   return (

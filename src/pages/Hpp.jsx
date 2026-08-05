@@ -6,11 +6,10 @@ import SearchableSelect from '@/components/SearchableSelect';
 import { Label } from '@/components/ui/label';
 import { Calculator, AlertTriangle, FlaskConical, Package, Tag, Stamp, TrendingUp, Box } from 'lucide-react';
 import { computeProductHpp } from '@/lib/hppCalculator';
-import { formatCurrency as fmtMoney } from '@/lib/format';
+import { formatCurrency as fmtMoney, formatQuantity as fmtQty } from '@/lib/format';
 
 const FINISHED_TYPES = ['barang_siap_jual', 'barang_belum_cukai', 'barang_siap_labeling', 'barang_siap_bottling'];
 
-const fmtQty = (n, u) => `${(Number(n) || 0).toLocaleString('id-ID', { maximumFractionDigits: 3 })}${u ? ' ' + u : ''}`;
 
 function StageCard({ icon: Icon, title, subtitle, rows, subtotal, perBottleNote, color }) {
   return (
