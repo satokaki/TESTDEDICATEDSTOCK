@@ -28,6 +28,17 @@ const itemTypes = [
 ];
 const itLabel = (v) => itemTypes.find(t => t.value === v)?.label || v;
 
+// Semua item pembelian adalah Material. Jenis (item_type) menentukan material_type
+// apa yang ditampilkan di picker — produk jadi tidak pernah dibeli.
+const MATERIAL_TYPES_BY_ITEM_TYPE = {
+  material: ['RAW_MATERIAL', 'PREMIX'],
+  packaging: ['PACKAGING', 'BOTTLE'],
+  label: ['LABEL', 'STICKER'],
+  excise_material: ['EXCISE'],
+  consumable: ['CONSUMABLE'],
+  supporting_item: null, // semua material
+};
+
 const UNIT_OPTIONS = [
   { value: 'GRAM', label: 'Gram' },
   { value: 'KG', label: 'Kg' },
@@ -95,9 +106,10 @@ export default function Purchases() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const getMaster = (itemType, id) => {
-    if (itemType === 'material') return materials.find(m => m.id === id);
-    return products.find(p => p.id === id);
+  const getMaster = (itemType, id) => materials.find(m => m.id === id);
+  const itemOptionsFor = (itemType) => {
+    const types = MATERIAL_TYPES_BY_ITEM_TYPE[itemType];
+    return types ? materials.filter(m => types.includes(m.material_type)) : materials;
   };
 
   const computeSubtotal = (it) => {
@@ -546,7 +558,7 @@ export default function Purchases() {
                       value={it.item_id}
                       onValueChange={v => onSelectItem(idx, it.item_type || 'material', v)}
                       placeholder={it.item_type === 'material' ? 'Pilih bahan' : 'Pilih barang'}
-                      options={((it.item_type === 'material' || !it.item_type) ? materials : products).map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''}` }))}
+                      options={itemOptionsFor(it.item_type).map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''}` }))}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -601,7 +613,7 @@ export default function Purchases() {
                         value={it.item_id}
                         onValueChange={v => onSelectItem(idx, it.item_type || 'material', v)}
                         placeholder={it.item_type === 'material' ? 'Pilih bahan' : 'Pilih barang'}
-                        options={((it.item_type === 'material' || !it.item_type) ? materials : products).map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''}` }))}
+                        options={itemOptionsFor(it.item_type).map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''}` }))}
                         className="h-8 text-[11.5px]"
                       />
                     </td>

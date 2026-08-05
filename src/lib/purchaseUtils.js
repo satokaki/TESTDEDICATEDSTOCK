@@ -48,7 +48,7 @@ export async function postPurchase(purchaseId) {
     const cf = Number(it.conversion_factor) || 1;
     const baseQty = Number(it.base_quantity) || qty * cf;
     await recordStockMovement({
-      item_type: it.item_type === 'material' ? 'material' : 'product',
+      item_type: 'material',
       item_id: it.item_id,
       item_code: it.item_code || '',
       item_name: it.item_name,
@@ -64,10 +64,8 @@ export async function postPurchase(purchaseId) {
       reference_id: purchase.id,
       notes: `Penerimaan pembelian ${purchase.purchase_number}`,
     });
-    // Update last purchase price for materials
-    if (it.item_type === 'material') {
-      try { await base44.entities.Material.update(it.item_id, { last_purchase_price: Number(it.unit_price) || 0 }); } catch { /* ignore */ }
-    }
+    // Update last purchase price (semua item pembelian adalah material)
+    try { await base44.entities.Material.update(it.item_id, { last_purchase_price: Number(it.unit_price) || 0 }); } catch { /* ignore */ }
   }
 
   // 2. Supplier payable for tempo
@@ -129,7 +127,7 @@ export async function cancelPurchase(purchaseId, reason = '') {
       const cf = Number(it.conversion_factor) || 1;
       const baseQty = Number(it.base_quantity) || qty * cf;
       await recordStockMovement({
-        item_type: it.item_type === 'material' ? 'material' : 'product',
+        item_type: 'material',
         item_id: it.item_id,
         item_code: it.item_code || '',
         item_name: it.item_name,
@@ -169,8 +167,5 @@ export async function cancelPurchase(purchaseId, reason = '') {
 /** Snapshot helper: pick item code/name/unit from material or product master */
 export function snapshotItem(itemType, master) {
   if (!master) return { item_code: '', item_name: '', base_unit: 'unit', category_name: '' };
-  if (itemType === 'material') {
-    return { item_code: master.code || '', item_name: master.name || '', base_unit: master.unit || 'gram', category_name: master.category_name || '' };
-  }
   return { item_code: master.code || '', item_name: master.name || '', base_unit: master.unit || 'unit', category_name: master.category_name || '' };
 }
