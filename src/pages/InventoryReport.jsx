@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Boxes, Package, Layers, AlertTriangle, Wallet, Download } from 'lucide-react';
-import { resolveBalanceUnitCost, buildStageCostIndex, resolvePgVgMaterials } from '@/lib/inventoryCost';
+import { resolveBalanceUnitCost, buildStageCostIndex, resolvePgVgMaterials, INVENTORY_COST_RUNTIME_VERSION } from '@/lib/inventoryCost';
 import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
 
 const STATUS_LABEL = {
@@ -79,6 +79,16 @@ export default function InventoryReport() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // [COST_TRACE] temporary runtime audit — remove after RCA resolved
+  useEffect(() => {
+    console.log('[COST_TRACE] INVENTORY_COST_RUNTIME_VERSION=' + INVENTORY_COST_RUNTIME_VERSION);
+    const tracedMats = materials.filter(m =>
+      ['Biscuit Think', 'PUTIH Propylene Glycol (PG)', 'BIRU Vegetable Glycerine (VG)'].includes(m.name)
+    ).map(m => ({ id: m.id, name: m.name, unit: m.unit, last_purchase_price: m.last_purchase_price, updated_date: m.updated_date }));
+    console.table(tracedMats);
+    console.log('[COST_TRACE][stageCostIndex][IZZI]', stageCostIndex['6a734c20f2f6babf7768fbb7']);
+  }, [materials, stageCostIndex]);
+
   const materialById = useMemo(() => {
     const map = {};
     materials.forEach((x) => { map[x.id] = x; });
@@ -93,7 +103,7 @@ export default function InventoryReport() {
   );
 
   const rows = useMemo(() => {
-    return balances
+    const traced = balances
       .filter((b) => {
         if (!b.item_id) return false;
         if (!filterStatus) return true;
@@ -116,6 +126,9 @@ export default function InventoryReport() {
           nilai_stok: qty * unitCost,
         };
       });
+    const izziRow = traced.find(r => r.batch_number === 'BATCH-IZZ-20260805-003' && r.inventory_status === 'READY_FOR_LABELING');
+    if (izziRow) console.log('[COST_TRACE][finalRow]', { quantity: izziRow.quantity, inventory_status: izziRow.inventory_status, item_id: izziRow.item_id, batch_id: izziRow.batch_id, resolved_unit_cost: izziRow.unit_cost, nilai_stok: izziRow.nilai_stok });
+    return traced;
   }, [balances, materialById, stageCostIndex, filterStatus]);
 
   const summary = useMemo(() => {
