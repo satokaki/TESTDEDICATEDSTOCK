@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Boxes, Package, Layers, AlertTriangle, Wallet, Download } from 'lucide-react';
-import { resolveBalanceUnitCost, buildStageCostIndex, resolvePgVgMaterials, INVENTORY_COST_RUNTIME_VERSION } from '@/lib/inventoryCost';
+import { resolveBalanceUnitCost, buildStageCostIndex, resolvePgVgMaterials } from '@/lib/inventoryCost';
 import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
 
 const STATUS_LABEL = {
@@ -92,18 +92,8 @@ export default function InventoryReport() {
     [products, recipes, ingredients, materials, mappings, pgMaterial, vgMaterial]
   );
 
-  // [COST_TRACE] temporary runtime audit — remove after RCA resolved
-  useEffect(() => {
-    console.log('[COST_TRACE] INVENTORY_COST_RUNTIME_VERSION=' + INVENTORY_COST_RUNTIME_VERSION);
-    const tracedMats = materials.filter(m =>
-      ['Biscuit Think', 'PUTIH Propylene Glycol (PG)', 'BIRU Vegetable Glycerine (VG)'].includes(m.name)
-    ).map(m => ({ id: m.id, name: m.name, unit: m.unit, last_purchase_price: m.last_purchase_price, updated_date: m.updated_date }));
-    console.table(tracedMats);
-    console.log('[COST_TRACE][stageCostIndex][IZZI]', stageCostIndex['6a734c20f2f6babf7768fbb7']);
-  }, [materials, stageCostIndex]);
-
   const rows = useMemo(() => {
-    const traced = balances
+    return balances
       .filter((b) => {
         if (!b.item_id) return false;
         if (!filterStatus) return true;
@@ -126,9 +116,6 @@ export default function InventoryReport() {
           nilai_stok: qty * unitCost,
         };
       });
-    const izziRow = traced.find(r => r.batch_number === 'BATCH-IZZ-20260805-003' && r.inventory_status === 'READY_FOR_LABELING');
-    if (izziRow) console.log('[COST_TRACE][finalRow]', { quantity: izziRow.quantity, inventory_status: izziRow.inventory_status, item_id: izziRow.item_id, batch_id: izziRow.batch_id, resolved_unit_cost: izziRow.unit_cost, nilai_stok: izziRow.nilai_stok });
-    return traced;
   }, [balances, materialById, stageCostIndex, filterStatus]);
 
   const summary = useMemo(() => {
@@ -199,52 +186,6 @@ export default function InventoryReport() {
             </SelectContent>
           </Select>
         </div>
-      </div>
-
-      {/* [COST_TRACE] temporary debug panel — remove after RCA resolved */}
-      <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-3 text-[11.5px] font-mono overflow-x-auto">
-        <div className="font-bold mb-2">COST DEBUG (runtime v{INVENTORY_COST_RUNTIME_VERSION})</div>
-        {(() => {
-          const IZZI = '6a734c20f2f6babf7768fbb7';
-          const findMat = (nm) => materials.find((m) => m.name && m.name.includes(nm));
-          const biscuit = findMat('Biscuit Think');
-          const pg = findMat('Propylene Glycol');
-          const vg = findMat('Vegetable Glycerin');
-          const stage = stageCostIndex[IZZI];
-          const izziRow = rows.find((r) => r.batch_number === 'BATCH-IZZ-20260805-003' && r.inventory_status === 'READY_FOR_LABELING');
-          const Row = ({ label, v }) => (
-            <div className="flex flex-wrap gap-2">
-              <span className="text-muted-foreground w-44 shrink-0">{label}</span>
-              <span className="font-semibold">{String(v)}</span>
-              <span className="text-blue-600">[{typeof v}]</span>
-              <span className="text-emerald-700">{JSON.stringify(v)}</span>
-            </div>
-          );
-          return (
-            <div className="space-y-1">
-              <div className="font-semibold mt-2">Material runtime (dari Material.list()):</div>
-              <Row label="Biscuit Think id" v={biscuit?.id} />
-              <Row label="Biscuit Think last_purchase_price" v={biscuit?.last_purchase_price} />
-              <Row label="PG id" v={pg?.id} />
-              <Row label="PG last_purchase_price" v={pg?.last_purchase_price} />
-              <Row label="VG id" v={vg?.id} />
-              <Row label="VG last_purchase_price" v={vg?.last_purchase_price} />
-              <div className="font-semibold mt-2">stageCostIndex[IZZI]:</div>
-              <Row label="BULK" v={stage?.BULK} />
-              <Row label="READY_FOR_LABELING" v={stage?.READY_FOR_LABELING} />
-              <Row label="UNEXCISED" v={stage?.UNEXCISED} />
-              <Row label="READY_FOR_SALE" v={stage?.READY_FOR_SALE} />
-              <div className="font-semibold mt-2">Final row BATCH-IZZ-20260805-003 (READY_FOR_LABELING):</div>
-              <Row label="quantity" v={izziRow?.quantity} />
-              <Row label="item_id" v={izziRow?.item_id} />
-              <Row label="batch_id" v={izziRow?.batch_id} />
-              <Row label="unit_cost (RAW)" v={izziRow?.unit_cost} />
-              <Row label="nilai_stok (RAW)" v={izziRow?.nilai_stok} />
-              <Row label="unit_cost formatted" v={fmtMoney(izziRow?.unit_cost)} />
-              <Row label="nilai_stok formatted" v={fmtMoney(izziRow?.nilai_stok)} />
-            </div>
-          );
-        })()}
       </div>
 
       <DataTable

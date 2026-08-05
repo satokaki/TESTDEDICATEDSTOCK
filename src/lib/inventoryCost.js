@@ -22,8 +22,6 @@
 import { base44 } from '@/api/base44Client';
 import { computeProductHpp } from './hppCalculator';
 
-export const INVENTORY_COST_RUNTIME_VERSION = 'COST_FIX_20260806_V2';
-
 export function resolvePgVgMaterials(materials) {
   const list = materials || [];
   return {
@@ -48,16 +46,6 @@ export function buildStageCostIndex({ products, recipes, ingredients, materials,
     const maps = (mappings || []).filter((m) => m.product_id === p.id);
     const hpp = computeProductHpp({ product: p, recipe, ingredients: ings, materials: matList, mappings: maps, pgMaterial, vgMaterial });
     if (!hpp) continue;
-    if (p.name === 'IZZI Taro 3mg' || p.id === '6a734c20f2f6babf7768fbb7') {
-      console.log('[COST_TRACE][buildStageCostIndex] INVENTORY_COST_RUNTIME_VERSION=' + INVENTORY_COST_RUNTIME_VERSION, {
-        productId: p.id, productName: p.name, bottleSize: p.bottle_size,
-        recipeId: recipe?.id, recipeCode: recipe?.code,
-        bulkRows: hpp.bulkRows.map(r => ({ materialId: r.materialId, name: r.materialName, unitCost: r.unitCost, qty: r.qty, cost: r.cost })),
-        bulkTotal: hpp.bulkTotal, costPerMl: hpp.costPerMl, bulkPerBottle: hpp.bulkPerBottle,
-        bottleTotal: hpp.bottleTotal, boxTotal: hpp.boxTotal,
-        READY_FOR_LABELING_unit_cost: hpp.bulkPerBottle + hpp.bottleTotal + hpp.boxTotal,
-      });
-    }
     index[p.id] = {
       BULK: hpp.costPerMl || 0,
       READY_FOR_LABELING: (hpp.bulkPerBottle + hpp.bottleTotal + hpp.boxTotal) || 0,
