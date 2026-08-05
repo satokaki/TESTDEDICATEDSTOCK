@@ -24,30 +24,28 @@ export default function Excise() {
   const [belumCukaiStock, setBelumCukaiStock] = useState([]);
   const [products, setProducts] = useState([]);
   const [brands, setBrands] = useState([]);
-  const [exciseMappings, setExciseMappings] = useState([]);
   const [exciseMaterials, setExciseMaterials] = useState([]);
   const [exciseStocks, setExciseStocks] = useState({});
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_mapping_id: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+  const [form, setForm] = useState({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [items, balances, prods, brs, maps, mats, matBal] = await Promise.all([
+      const [items, balances, prods, brs, mats, matBal] = await Promise.all([
         base44.entities.ExciseOrder.list('-created_date', 100),
         getAllStockBalances('product'),
         base44.entities.Product.filter({ is_active: true }),
         base44.entities.Brand.filter({ is_active: true }),
-        base44.entities.ProductComponentMapping.filter({ component_type: 'excise', is_active: true }),
         base44.entities.Material.filter({ material_type: 'EXCISE', is_active: true }),
         getAllStockBalances('material'),
       ]);
       setData(items);
       setBelumCukaiStock(balances.filter(b => b.inventory_status === 'UNEXCISED' && b.quantity > 0));
       setProducts(prods); setBrands(brs);
-      setExciseMappings(maps); setExciseMaterials(mats);
+      setExciseMaterials(mats);
       const sm = {}; matBal.forEach(b => { sm[b.item_id] = (sm[b.item_id] || 0) + (b.available_quantity || 0); });
       setExciseStocks(sm);
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
@@ -56,32 +54,22 @@ export default function Excise() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const cukaiOptions = form.product_id ? exciseMappings.filter(m => m.product_id === form.product_id) : [];
   const exciseTotalRequired = (Number(form.quantity) || 0) * (Number(form.excise_quantity_per_unit) || 0);
 
   const openAdd = () => {
-    setForm({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_mapping_id: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+    setForm({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
     setModalOpen(true);
   };
 
   const onStockChange = (v) => {
     const stock = belumCukaiStock.find(s => s.id === v);
     const prod = products.find(p => p.id === stock?.item_id);
-    const pid = stock?.item_id || '';
-    const maps = exciseMappings.filter(m => m.product_id === pid);
-    const def = maps.find(m => m.is_default) || maps[0];
-    const mat = def ? exciseMaterials.find(m => m.id === def.material_id) : null;
-    setForm({
-      ...form, stock_id: v, product_id: pid, brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size ?? '',
-      excise_mapping_id: def?.id || '', excise_material_id: def?.material_id || '', excise_material_name: mat?.name || def?.material_name || '',
-      excise_quantity_per_unit: String(def?.quantity_per_unit ?? 1), excise_label_type: mat?.name || def?.material_name || '',
-    });
+    setForm(f => ({ ...f, stock_id: v, product_id: stock?.item_id || '', brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size ?? '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '' }));
   };
 
-  const onCukaiChange = (mappingId) => {
-    const m = exciseMappings.find(x => x.id === mappingId);
-    const mat = m ? exciseMaterials.find(mm => mm.id === m.material_id) : null;
-    setForm({ ...form, excise_mapping_id: mappingId, excise_material_id: m?.material_id || '', excise_material_name: mat?.name || m?.material_name || '', excise_quantity_per_unit: String(m?.quantity_per_unit ?? 1), excise_label_type: mat?.name || m?.material_name || '' });
+  const onCukaiChange = (materialId) => {
+    const m = exciseMaterials.find(x => x.id === materialId);
+    setForm(f => ({ ...f, excise_material_id: materialId, excise_material_name: m?.name || '', excise_label_type: m?.name || '' }));
   };
 
   const handleSubmit = async () => {
@@ -114,7 +102,6 @@ export default function Excise() {
         excise_date: form.excise_date, operator: form.operator,
         status: 'siap_jual', notes: form.notes,
       });
-      // consume belum_cukai
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
         batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
@@ -122,7 +109,6 @@ export default function Excise() {
         transaction_type: 'excise_consumption', transaction_number: excNumber,
         reference_type: 'excise', reference_id: excise.id, notes: `Proses cukai ${excNumber}`,
       });
-      // consume cukai material
       if (form.excise_material_id) {
         const mat = exciseMaterials.find(m => m.id === form.excise_material_id);
         await recordStockMovement({
@@ -132,7 +118,6 @@ export default function Excise() {
           reference_type: 'excise', reference_id: excise.id, notes: `Pita cukai untuk ${excNumber}`,
         });
       }
-      // output siap_jual
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
         batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
@@ -189,7 +174,7 @@ export default function Excise() {
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Proses Cukai" description="Proses pita cukai untuk barang belum cukai → siap jual. Pita cukai dari mapping produk."
+      <PageHeader title="Proses Cukai" description="Proses pita cukai untuk barang belum cukai → siap jual. Pilih pita cukai dari stok."
         actions={<Button onClick={openAdd} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Proses Cukai Baru</Button>} />
       <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada proses cukai" searchKeys={['excise_number', 'product_name', 'batch_number']} searchPlaceholder="Cari proses cukai..." />
 
@@ -213,18 +198,17 @@ export default function Excise() {
           <div><Label className="text-[12.5px] mb-1">Tanggal Proses</Label><Input type="date" value={form.excise_date} onChange={e => setForm({ ...form, excise_date: e.target.value })} className="h-9 text-[13px]" /></div>
         </div>
         <div>
-          <Label className="text-[12.5px] mb-1">Pita Cukai (dari Mapping)</Label>
-          <Select value={form.excise_mapping_id} onValueChange={onCukaiChange} disabled={!form.product_id}>
-            <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder={form.product_id ? 'Pilih pita cukai' : 'Pilih produk dulu'} /></SelectTrigger>
+          <Label className="text-[12.5px] mb-1">Pita Cukai (Tipe Pita Cukai)</Label>
+          <Select value={form.excise_material_id} onValueChange={onCukaiChange}>
+            <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih pita cukai dari stok" /></SelectTrigger>
             <SelectContent>
-              {cukaiOptions.map(m => {
-                const mat = exciseMaterials.find(mm => mm.id === m.material_id);
-                const stk = exciseStocks[m.material_id] || 0;
-                return <SelectItem key={m.id} value={m.id}>{mat?.name || m.material_name} · Stok {stk} {mat?.unit || 'pcs'}{m.is_default ? ' ★' : ''}</SelectItem>;
+              {exciseMaterials.map(m => {
+                const stk = exciseStocks[m.id] || 0;
+                return <SelectItem key={m.id} value={m.id} disabled={stk <= 0}>{m.name} · Stok {stk} {m.unit || 'pcs'}</SelectItem>;
               })}
             </SelectContent>
           </Select>
-          {form.product_id && cukaiOptions.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada pita cukai di mapping produk ini. Tambahkan via Master Produk. Proses cukai tetap bisa jalan tanpa konsumsi stok pita.</p>}
+          {exciseMaterials.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada barang tipe Pita Cukai. Tambahkan di Master Barang (Tipe: Pita Cukai). Proses cukai tetap bisa jalan tanpa konsumsi stok pita.</p>}
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div><Label className="text-[12.5px] mb-1">Per Unit</Label><NumberInput value={form.excise_quantity_per_unit} onChange={v => setForm({ ...form, excise_quantity_per_unit: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>

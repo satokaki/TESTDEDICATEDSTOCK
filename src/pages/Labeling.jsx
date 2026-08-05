@@ -23,7 +23,6 @@ export default function Labeling() {
   const [siapLabelStock, setSiapLabelStock] = useState([]);
   const [products, setProducts] = useState([]);
   const [brands, setBrands] = useState([]);
-  const [labelMappings, setLabelMappings] = useState([]);
   const [labelMaterials, setLabelMaterials] = useState([]);
   const [labelStocks, setLabelStocks] = useState({});
   const [loading, setLoading] = useState(true);
@@ -34,19 +33,17 @@ export default function Labeling() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [items, balances, prods, brs, maps, mats, matBal] = await Promise.all([
+      const [items, balances, prods, brs, mats, matBal] = await Promise.all([
         base44.entities.LabelingOrder.list('-created_date', 100),
         getAllStockBalances('product'),
         base44.entities.Product.filter({ is_active: true }),
         base44.entities.Brand.filter({ is_active: true }),
-        base44.entities.ProductComponentMapping.filter({ component_type: 'label', is_active: true }),
         base44.entities.Material.filter({ is_active: true }),
         getAllStockBalances('material'),
       ]);
       setData(items);
       setSiapLabelStock(balances.filter(b => b.inventory_status === 'READY_FOR_LABELING' && b.quantity > 0));
       setProducts(prods); setBrands(brs);
-      setLabelMappings(maps);
       setLabelMaterials(mats.filter(m => m.material_type === 'LABEL' || m.material_type === 'STICKER'));
       const sm = {}; matBal.forEach(b => { sm[b.item_id] = (sm[b.item_id] || 0) + (b.available_quantity || 0); });
       setLabelStocks(sm);
@@ -56,24 +53,20 @@ export default function Labeling() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const buildLabels = (productId) => {
-    const maps = labelMappings.filter(m => m.product_id === productId);
-    return maps.map(m => {
-      const mat = labelMaterials.find(lm => lm.id === m.material_id);
-      return { mapping_id: m.id, material_id: m.material_id, material_name: mat?.name || m.material_name, material_code: mat?.code || m.material_code, unit: mat?.unit || 'unit', quantity_per_unit: String(m.quantity_per_unit ?? 1), stock: labelStocks[m.material_id] || 0, checked: true };
-    });
-  };
+  const buildLabels = () => labelMaterials.map(m => ({
+    material_id: m.id, material_name: m.name, material_code: m.code || '',
+    unit: m.unit || 'unit', quantity_per_unit: '1', stock: labelStocks[m.id] || 0, checked: false,
+  }));
 
   const openAdd = () => {
-    setForm({ stock_id: '', product_id: '', product_name: '', brand_id: '', brand_name: '', batch_id: '', batch_number: '', bottle_size: '', available_qty: '', quantity: '', labeling_date: new Date().toISOString().slice(0, 10), operator: '', notes: '', labels: [] });
+    setForm({ stock_id: '', product_id: '', product_name: '', brand_id: '', brand_name: '', batch_id: '', batch_number: '', bottle_size: '', available_qty: '', quantity: '', labeling_date: new Date().toISOString().slice(0, 10), operator: '', notes: '', labels: buildLabels() });
     setModalOpen(true);
   };
 
   const onStockChange = (v) => {
     const s = siapLabelStock.find(b => b.id === v);
     const p = products.find(p => p.id === s?.item_id);
-    const pid = s?.item_id || '';
-    setForm(f => ({ ...f, stock_id: v, product_id: pid, product_name: p?.name || s?.item_name || '', brand_id: p?.brand_id || '', brand_name: p?.brand_name || '', batch_id: s?.batch_id || '', batch_number: s?.batch_number || '', bottle_size: p?.bottle_size ?? '', available_qty: s?.available_quantity || '', quantity: String(s?.available_quantity || ''), labels: buildLabels(pid) }));
+    setForm(f => ({ ...f, stock_id: v, product_id: s?.item_id || '', product_name: p?.name || s?.item_name || '', brand_id: p?.brand_id || '', brand_name: p?.brand_name || '', batch_id: s?.batch_id || '', batch_number: s?.batch_number || '', bottle_size: p?.bottle_size ?? '', available_qty: s?.available_quantity || '', quantity: String(s?.available_quantity || '') }));
   };
 
   const updateLabel = (idx, patch) => setForm(f => ({ ...f, labels: f.labels.map((l, i) => i === idx ? { ...l, ...patch } : l) }));
@@ -82,10 +75,10 @@ export default function Labeling() {
     if (!form.stock_id || !form.quantity || !form.operator) { toast({ variant: 'destructive', title: 'Batch, jumlah, operator wajib' }); return; }
     if (Number(form.quantity) > Number(form.available_qty)) { toast({ variant: 'destructive', title: 'Jumlah melebihi stok siap labeling', description: `Tersedia: ${form.available_qty}` }); return; }
     const used = form.labels.filter(l => l.checked);
-    if (used.length === 0) { toast({ variant: 'destructive', title: 'Pilih minimal satu label' }); return; }
+    if (used.length === 0) { toast({ variant: 'destructive', title: 'Pilih minimal satu label/stiker' }); return; }
     for (const l of used) {
       const need = Number(form.quantity) * (Number(l.quantity_per_unit) || 0);
-      if (need > l.stock) { toast({ variant: 'destructive', title: `Stok label "${l.material_name}" tidak cukup`, description: `Butuh ${need}, stok ${l.stock}` }); return; }
+      if (need > l.stock) { toast({ variant: 'destructive', title: `Stok "${l.material_name}" tidak cukup`, description: `Butuh ${need}, stok ${l.stock}` }); return; }
     }
     setSubmitting(true);
     try {
@@ -147,7 +140,7 @@ export default function Labeling() {
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Labeling" description="Labeling barang siap labeling → belum cukai. Label dipilih dari mapping produk."
+      <PageHeader title="Labeling" description="Labeling barang siap labeling → belum cukai. Pilih label/stiker dari stok."
         actions={<Button onClick={openAdd} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Labeling Baru</Button>} />
       <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada labeling" searchKeys={['labeling_number', 'product_name', 'batch_number']} searchPlaceholder="Cari labeling..." />
 
@@ -173,19 +166,19 @@ export default function Labeling() {
           <div><Label className="text-[12.5px] mb-1">Tanggal</Label><Input type="date" value={form.labeling_date} onChange={e => setForm({ ...form, labeling_date: e.target.value })} className="h-9 text-[13px]" /></div>
         </div>
         <div>
-          <Label className="text-[12.5px] mb-1">Label (dari Mapping)</Label>
-          {form.product_id && form.labels.length === 0 && <p className="text-[11px] text-amber-600">Belum ada label di mapping produk ini. Tambahkan via Master Produk.</p>}
-          <div className="space-y-1.5">
+          <Label className="text-[12.5px] mb-1">Label / Stiker (centang yang dipakai)</Label>
+          {form.labels.length === 0 && <p className="text-[11px] text-amber-600">Belum ada barang tipe Label/Stiker. Tambahkan di Master Barang.</p>}
+          <div className="space-y-1.5 max-h-52 overflow-auto border border-border rounded p-2">
             {form.labels.map((l, idx) => (
-              <div key={l.mapping_id} className="flex items-center gap-2 border border-border rounded px-2 py-1.5 bg-muted/10">
+              <div key={l.material_id} className="flex items-center gap-2 border border-border rounded px-2 py-1.5 bg-muted/10">
                 <Checkbox checked={l.checked} onCheckedChange={v => updateLabel(idx, { checked: v })} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[12.5px] font-medium truncate">{l.material_name}</div>
                   <div className="text-[11px] text-muted-foreground">Stok: {l.stock} {l.unit}</div>
                 </div>
-                <div className="w-24"><NumberInput value={l.quantity_per_unit} onChange={v => updateLabel(idx, { quantity_per_unit: v })} allowDecimal min={0} className="h-8 text-[12px]" /></div>
+                <div className="w-24"><NumberInput value={l.quantity_per_unit} onChange={v => updateLabel(idx, { quantity_per_unit: v })} allowDecimal min={0} className="h-8 text-[12px]" disabled={!l.checked} /></div>
                 <span className="text-[11px] text-muted-foreground">/unit</span>
-                <span className="text-[11px] tabular-nums w-20 text-right">Butuh: {(Number(form.quantity) || 0) * (Number(l.quantity_per_unit) || 0)}</span>
+                <span className="text-[11px] tabular-nums w-20 text-right">Butuh: {l.checked ? (Number(form.quantity) || 0) * (Number(l.quantity_per_unit) || 0) : 0}</span>
               </div>
             ))}
           </div>
