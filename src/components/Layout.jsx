@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import {
   LayoutDashboard, FlaskConical, Factory, Package, Tag, Stamp,
   ShoppingCart, Wallet, ClipboardList, FileBarChart, Database,
-  Settings, ChevronDown, Menu, X, LogOut, Bell, Search, UserCog, Calculator
+  Settings, ChevronDown, Menu, X, LogOut, Bell, Search, UserCog, Calculator, Bot
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -195,6 +195,17 @@ export default function Layout() {
               <span>Pengaturan</span>
             </Link>
           )}
+          <Link
+            to="/assistant"
+            onClick={() => setSidebarOpen(false)}
+            className={cn(
+              'flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors',
+              isActive('/assistant') ? 'bg-primary text-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent'
+            )}
+          >
+            <Bot className="w-4 h-4 shrink-0" />
+            <span>Asisten AI</span>
+          </Link>
         </nav>
       </aside>
 

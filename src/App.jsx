@@ -31,6 +31,7 @@ import Materials from '@/pages/Materials';
 import Products from '@/pages/Products';
 import Warehouses from '@/pages/Warehouses';
 import Users from '@/pages/Users';
+import Assistant from '@/pages/Assistant';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
@@ -84,6 +85,7 @@ const AuthenticatedApp = () => {
           <Route path="/settings" element={<Settings />} />
           <Route path="/database" element={<DatabaseManagement />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/assistant" element={<Assistant />} />
           <Route path="/master/brands" element={<Brands />} />
           <Route path="/master/categories" element={<Categories />} />
           <Route path="/master/suppliers" element={<Suppliers />} />
