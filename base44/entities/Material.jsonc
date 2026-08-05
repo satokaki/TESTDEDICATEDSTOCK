@@ -38,6 +38,7 @@
         "STICKER",
         "BOTTLE",
         "CONSUMABLE",
+        "EXCISE",
         "FINISHED_GOOD"
       ],
       "default": "RAW_MATERIAL",

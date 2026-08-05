@@ -19,7 +19,10 @@ const materialTypes = [
   { value: 'RAW_MATERIAL', label: 'Raw Material' },
   { value: 'PREMIX', label: 'Premix' },
   { value: 'PACKAGING', label: 'Packaging' },
+  { value: 'BOTTLE', label: 'Botol' },
   { value: 'LABEL', label: 'Label' },
+  { value: 'STICKER', label: 'Stiker' },
+  { value: 'EXCISE', label: 'Pita Cukai' },
   { value: 'CONSUMABLE', label: 'Consumable' },
   { value: 'FINISHED_GOOD', label: 'Finished Good' },
 ];
@@ -53,6 +56,7 @@ const CATEGORY_TYPE_BY_MATERIAL_TYPE = {
   LABEL: 'label',
   STICKER: 'label',
   CONSUMABLE: 'barang',
+  EXCISE: 'barang',
   FINISHED_GOOD: 'produk_jadi',
 };
 const catTypeLabel = (materialType) => {
