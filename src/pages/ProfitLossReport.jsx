@@ -8,8 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TrendingUp, Wallet, Receipt, Percent, Download } from 'lucide-react';
 import { computeProductHpp } from '@/lib/hppCalculator';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
-const fmtMoney = (v) => 'Rp ' + (Number(v) || 0).toLocaleString('id-ID');
 const fmtPct = (v) => (Number(v) || 0).toFixed(1) + '%';
 
 function MiniKpi({ icon: Icon, label, value, color }) {

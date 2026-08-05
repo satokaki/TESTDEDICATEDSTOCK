@@ -15,6 +15,7 @@ import { createAuditLog } from '@/lib/stockUtils';
 import NumberInput from '@/components/NumberInput';
 import PdfButton from '@/components/PdfButton';
 import { exportDocumentToPDF } from '@/lib/pdfExport';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
 export default function Payments() {
   const { toast } = useToast();
@@ -127,8 +128,6 @@ export default function Payments() {
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
     finally { setSubmitting(false); }
   };
-
-  const fmtMoney = (v) => 'Rp ' + (v || 0).toLocaleString('id-ID');
 
   const exportPaymentPDF = async (row) => {
     try {

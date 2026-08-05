@@ -6,6 +6,7 @@ import {
   ClipboardList, AlertTriangle, TrendingUp, Users, Boxes, Activity
 } from 'lucide-react';
 import { loadInventoryCostContext, resolveBalanceUnitCost } from '@/lib/inventoryCost';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
 function KpiCard({ icon: Icon, label, value, color, onClick }) {
   return (
@@ -116,8 +117,6 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
-
-  const fmtMoney = (v) => 'Rp ' + (v || 0).toLocaleString('id-ID');
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">

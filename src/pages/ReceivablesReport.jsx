@@ -12,6 +12,7 @@ import { Download } from 'lucide-react';
 import PdfButton from '@/components/PdfButton';
 import { exportReportToPDF } from '@/lib/pdfExport';
 import { useAuth } from '@/lib/AuthContext';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
 const agingBuckets = (days) => {
   if (days < 0) return 'belum_jatuh_tempo';
@@ -56,7 +57,6 @@ export default function ReceivablesReport() {
     return { ...s, overdue_days: overdue, aging_bucket: agingBuckets(overdue) };
   });
 
-  const fmtMoney = (v) => 'Rp ' + (v || 0).toLocaleString('id-ID');
   const totalPiutang = filtered.reduce((s, r) => s + (r.remaining_receivable || 0), 0);
   const belumJatuhTempo = filtered.filter(r => r.overdue_days < 0).reduce((s, r) => s + r.remaining_receivable, 0);
   const jatuhTempo = filtered.filter(r => r.overdue_days >= 0).reduce((s, r) => s + r.remaining_receivable, 0);

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import StatusBadge from '@/components/StatusBadge';
 import { Search, Layers, Factory, Package, Tag, Stamp, ShoppingCart } from 'lucide-react';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
 export default function BatchTraceability() {
   const { toast } = useToast();
@@ -48,7 +49,7 @@ export default function BatchTraceability() {
     ...(bottlings.filter(b => b.batch_number === selectedBatch.batch_number).map(b => ({ icon: Package, label: 'Bottling', date: b.bottling_date, number: b.bottling_number, details: [`Bulk: ${b.total_bulk_processed} ml`, `Output: ${b.total_output} ml`, `Waste: ${b.waste} ml`, `Operator: ${b.operator || '—'}`], status: b.status }))),
     ...(labelings.filter(l => l.batch_number === selectedBatch.batch_number).map(l => ({ icon: Tag, label: 'Labeling', date: l.labeling_date, number: l.labeling_number, details: [`Jumlah: ${l.quantity}`, `Label: ${l.label_type || '—'}`, `Operator: ${l.operator || '—'}`], status: l.status }))),
     ...(excises.filter(e => e.batch_number === selectedBatch.batch_number).map(e => ({ icon: Stamp, label: 'Proses Cukai', date: e.excise_date, number: e.excise_number, details: [`Jumlah: ${e.quantity}`, `Ref: ${e.excise_reference_number || '—'}`, `Operator: ${e.operator || '—'}`], status: e.status }))),
-    ...(sales.filter(s => s.invoice_number?.includes(selectedBatch.batch_number)).map(s => ({ icon: ShoppingCart, label: 'Penjualan', date: s.transaction_date, number: s.invoice_number, details: [`Customer: ${s.customer_name}`, `Total: Rp ${(s.total || 0).toLocaleString('id-ID')}`, `Metode: ${s.payment_method}`], status: s.transaction_status }))),
+    ...(sales.filter(s => s.invoice_number?.includes(selectedBatch.batch_number)).map(s => ({ icon: ShoppingCart, label: 'Penjualan', date: s.transaction_date, number: s.invoice_number, details: [`Customer: ${s.customer_name}`, `Total: ${fmtMoney(s.total)}`, `Metode: ${s.payment_method}`], status: s.transaction_status }))),
   ] : [];
 
   return (

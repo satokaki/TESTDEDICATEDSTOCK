@@ -13,8 +13,7 @@ import { exportReportToPDF } from '@/lib/pdfExport';
 import { useAuth } from '@/lib/AuthContext';
 import { STAGE_LABEL, getInventoryDisplayName } from '@/lib/inventoryDisplay';
 import { loadInventoryCostContext, resolveBalanceUnitCost } from '@/lib/inventoryCost';
-
-const fmtMoney = (v) => 'Rp ' + (Number(v) || 0).toLocaleString('id-ID');
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
 const transactionTypeLabels = {
   opening_balance: 'Opening Balance',

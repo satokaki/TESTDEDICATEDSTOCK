@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import NumberInput from '@/components/NumberInput';
 import { Plus, Pencil, Trash2, Lock } from 'lucide-react';
 import { generateCustomerCode } from '@/lib/sequence';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
 export default function Customers() {
   const { toast } = useToast();
@@ -62,8 +63,6 @@ export default function Customers() {
     try { await base44.entities.Customer.update(item.id, { is_active: false }); toast({ title: 'Customer dinonaktifkan' }); loadData(); }
     catch { toast({ variant: 'destructive', title: 'Gagal' }); }
   };
-
-  const fmtMoney = (v) => 'Rp ' + (v || 0).toLocaleString('id-ID');
 
   const columns = [
     { key: 'code', header: 'Kode', sortable: true, className: 'font-mono font-medium', render: (row) => <span className="flex items-center gap-1">{row.code}<Lock className="w-3 h-3 text-muted-foreground/40" /></span> },

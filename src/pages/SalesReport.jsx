@@ -12,6 +12,7 @@ import { Download, TrendingUp } from 'lucide-react';
 import PdfButton from '@/components/PdfButton';
 import { exportReportToPDF } from '@/lib/pdfExport';
 import { useAuth } from '@/lib/AuthContext';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
 export default function SalesReport() {
   const { toast } = useToast();
@@ -47,7 +48,6 @@ export default function SalesReport() {
     return true;
   });
 
-  const fmtMoney = (v) => 'Rp ' + (v || 0).toLocaleString('id-ID');
   const totalSales = filtered.reduce((s, r) => s + (r.total || 0), 0);
   const cashSales = filtered.filter(s => s.payment_method === 'cash').reduce((s, r) => s + (r.total || 0), 0);
   const transferSales = filtered.filter(s => s.payment_method === 'transfer').reduce((s, r) => s + (r.total || 0), 0);

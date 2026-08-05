@@ -17,6 +17,7 @@ import { postPurchase, cancelPurchase, snapshotItem } from '@/lib/purchaseUtils'
 import { generatePurchaseNumber } from '@/lib/sequence';
 import PdfButton from '@/components/PdfButton';
 import { exportDocumentToPDF } from '@/lib/pdfExport';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
 const itemTypes = [
   { value: 'material', label: 'Bahan Produksi' },
@@ -62,7 +63,6 @@ const paymentMethods = [
 ];
 const pmLabel = (v) => paymentMethods.find(t => t.value === v)?.label || v;
 
-const fmtMoney = (v) => 'Rp ' + (Number(v) || 0).toLocaleString('id-ID');
 const toNum = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
 
 const emptyItem = () => ({

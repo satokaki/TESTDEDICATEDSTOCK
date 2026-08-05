@@ -17,6 +17,7 @@ import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
 import NumberInput from '@/components/NumberInput';
 import PdfButton from '@/components/PdfButton';
 import { exportDocumentToPDF } from '@/lib/pdfExport';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
 export default function Sales() {
   const { toast } = useToast();
@@ -123,8 +124,6 @@ export default function Sales() {
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
     finally { setSubmitting(false); }
   };
-
-  const fmtMoney = (v) => 'Rp ' + (v || 0).toLocaleString('id-ID');
 
   const exportInvoicePDF = async (row) => {
     try {
