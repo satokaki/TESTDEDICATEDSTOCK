@@ -4,18 +4,22 @@
   "properties": {
     "code": {
       "type": "string",
-      "description": "Kode bahan, unik"
+      "description": "Kode barang, unik"
     },
     "name": {
       "type": "string",
-      "description": "Nama bahan"
+      "description": "Nama barang"
     },
     "category_id": {
       "type": "string",
-      "description": "ID kategori bahan"
+      "description": "ID kategori barang"
     },
     "category_name": {
       "type": "string"
+    },
+    "specification": {
+      "type": "string",
+      "description": "Spesifikasi/label visual singkat (mis. 'Cair', '60ml', 'Premix', 'Kering'). Dipakai untuk dibaca operator, bukan untuk matching kompatibilitas."
     },
     "supplier_id": {
       "type": "string",
@@ -37,7 +41,7 @@
         "FINISHED_GOOD"
       ],
       "default": "RAW_MATERIAL",
-      "description": "Klasifikasi bahan: RAW_MATERIAL (bahan baku), PREMIX (setengah jadi internal), PACKAGING (kemasan umum), LABEL (label), STICKER (stiker), BOTTLE (botol), FINISHED_GOOD (barang jadi)"
+      "description": "Klasifikasi struktural: menentukan scope kategori yang tersedia, dan menjaga item packaging tidak masuk ke picker bahan resep. Akan digantikan oleh Mapping di fase 2."
     },
     "is_internally_produced": {
       "type": "boolean",
@@ -127,38 +131,6 @@
     },
     "notes": {
       "type": "string"
-    },
-    "bottle_size_ml": {
-      "type": "number",
-      "description": "Ukuran botol/label (ml) untuk pencocokan otomatis saat bottling/labeling. Wajib untuk BOTTLE; opsional untuk LABEL/STICKER (universal boleh kosong)."
-    },
-    "color": {
-      "type": "string",
-      "description": "Warna (botol/label), mis. Transparan, Hitam, Putih"
-    },
-    "model": {
-      "type": "string",
-      "description": "Model/bentuk botol, mis. Chubby Gorilla, Unicorn"
-    },
-    "cap_type": {
-      "type": "string",
-      "description": "Jenis tutup jika satu paket dengan botol"
-    },
-    "material_spec": {
-      "type": "string",
-      "description": "Material (PET, PE, kertas, vinyl, dll)"
-    },
-    "brand_id": {
-      "type": "string",
-      "description": "Merk terkait (untuk label/botol khusus merk). Kosong = universal."
-    },
-    "product_id": {
-      "type": "string",
-      "description": "Produk terkait (untuk label/botol khusus produk). Kosong = universal."
-    },
-    "label_type": {
-      "type": "string",
-      "description": "Jenis label: depan, belakang, batch, universal"
     }
   },
   "required": [

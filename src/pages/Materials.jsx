@@ -69,7 +69,7 @@ export default function Materials() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ code: '', name: '', material_type: 'RAW_MATERIAL', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, is_internally_produced: false, concentration_value: '', concentration_unit: 'PERCENT_WW', carrier_material_id: '', default_density: '', notes: '' });
+  const [form, setForm] = useState({ code: '', name: '', material_type: 'RAW_MATERIAL', category_id: '', specification: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, is_internally_produced: false, concentration_value: '', concentration_unit: 'PERCENT_WW', carrier_material_id: '', default_density: '', notes: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -108,10 +108,10 @@ export default function Materials() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const openAdd = () => { setEditing(null); setForm({ code: '', name: '', material_type: 'RAW_MATERIAL', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, is_internally_produced: false, concentration_value: '', concentration_unit: 'PERCENT_WW', carrier_material_id: '', default_density: '', notes: '' });     refreshCategories(null, 'RAW_MATERIAL'); setModalOpen(true); };
+  const openAdd = () => { setEditing(null); setForm({ code: '', name: '', material_type: 'RAW_MATERIAL', category_id: '', specification: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, is_internally_produced: false, concentration_value: '', concentration_unit: 'PERCENT_WW', carrier_material_id: '', default_density: '', notes: '' });     refreshCategories(null, 'RAW_MATERIAL'); setModalOpen(true); };
   const openEdit = (item) => {
     setEditing(item);
-    setForm({ code: item.code, name: item.name, material_type: item.material_type || 'RAW_MATERIAL', category_id: item.category_id || '', material_category: item.material_category, supplier_id: item.supplier_id || '', unit: item.unit, density: item.density ?? '', pg_content: item.pg_content ?? '', vg_content: item.vg_content ?? '', nicotine_strength: item.nicotine_strength ?? '', min_stock: item.min_stock ?? '', last_purchase_price: item.last_purchase_price ?? '', is_active: item.is_active, is_internally_produced: item.is_internally_produced ?? false, concentration_value: item.concentration_value ?? '', concentration_unit: item.concentration_unit || 'PERCENT_WW', carrier_material_id: item.carrier_material_id || '', default_density: item.default_density ?? '', notes: item.notes || '' });
+    setForm({ code: item.code, name: item.name, material_type: item.material_type || 'RAW_MATERIAL', category_id: item.category_id || '', specification: item.specification || '', material_category: item.material_category, supplier_id: item.supplier_id || '', unit: item.unit, density: item.density ?? '', pg_content: item.pg_content ?? '', vg_content: item.vg_content ?? '', nicotine_strength: item.nicotine_strength ?? '', min_stock: item.min_stock ?? '', last_purchase_price: item.last_purchase_price ?? '', is_active: item.is_active, is_internally_produced: item.is_internally_produced ?? false, concentration_value: item.concentration_value ?? '', concentration_unit: item.concentration_unit || 'PERCENT_WW', carrier_material_id: item.carrier_material_id || '', default_density: item.default_density ?? '', notes: item.notes || '' });
     refreshCategories(item.category_id, item.material_type);
     setModalOpen(true);
   };
@@ -165,6 +165,7 @@ export default function Materials() {
   const columns = [
     { key: 'code', header: 'Kode', sortable: true, className: 'font-mono font-medium' },
     { key: 'name', header: 'Nama Bahan', sortable: true, className: 'font-medium' },
+    { key: 'specification', header: 'Spesifikasi', render: (row) => row.specification || '—' },
     { key: 'material_type', header: 'Tipe', render: (row) => row.material_type === 'PREMIX'
       ? <span className="text-[11px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold">Premix</span>
       : <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded">{mtLabel(row.material_type)}</span> },
@@ -198,6 +199,7 @@ export default function Materials() {
         <div className="grid grid-cols-2 gap-3">
           <div><Label className="text-[12.5px] mb-1">Kode Bahan</Label><Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly /></div>
           <div><Label className="text-[12.5px] mb-1">Nama Bahan *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="h-9 text-[13px]" /></div>
+          <div><Label className="text-[12.5px] mb-1">Spesifikasi</Label><Input value={form.specification} onChange={e => setForm({ ...form, specification: e.target.value })} placeholder="mis. Cair / 60ml / Premix" className="h-9 text-[13px]" /></div>
           <div>
             <Label className="text-[12.5px] mb-1">Kategori</Label>
             {catError ? (
