@@ -95,8 +95,8 @@ export default function Purchases() {
         base44.entities.Purchase.list('-created_date', 200),
         base44.entities.Supplier.filter({ is_active: true }),
         base44.entities.Warehouse.filter({ is_active: true }),
-        base44.entities.Material.filter({ is_active: true }),
-        base44.entities.Product.filter({ is_active: true }),
+        base44.entities.Material.filter({ is_active: true }, '-created_date', 500),
+        base44.entities.Product.filter({ is_active: true }, '-created_date', 500),
       ]);
       setData(items);
       setSuppliers(sups); setWarehouses(whs); setMaterials(mats); setProducts(prods);

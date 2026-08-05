@@ -38,7 +38,7 @@ export default function Labeling() {
         getAllStockBalances('product'),
         base44.entities.Product.filter({ is_active: true }),
         base44.entities.Brand.filter({ is_active: true }),
-        base44.entities.Material.filter({ is_active: true }),
+        base44.entities.Material.filter({ is_active: true }, '-created_date', 500),
         getAllStockBalances('material'),
       ]);
       setData(items);

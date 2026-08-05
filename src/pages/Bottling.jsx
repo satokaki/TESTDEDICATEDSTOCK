@@ -35,7 +35,7 @@ export default function Bottling() {
         base44.entities.BottlingOrder.list('-created_date', 100),
         getAllStockBalances('product'),
         base44.entities.Product.filter({ is_active: true }),
-        base44.entities.Material.filter({ material_type: 'BOTTLE', is_active: true }),
+        base44.entities.Material.filter({ material_type: 'BOTTLE', is_active: true }, '-created_date', 500),
         getAllStockBalances('material'),
       ]);
       setData(items);
