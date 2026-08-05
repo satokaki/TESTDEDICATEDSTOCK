@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import {
   LayoutDashboard, FlaskConical, Factory, Package, Tag, Stamp,
   ShoppingCart, Wallet, ClipboardList, FileBarChart, Database,
-  Settings, ChevronDown, Menu, X, LogOut, Bell, Search, UserCog
+  Settings, ChevronDown, Menu, X, LogOut, Bell, Search, UserCog, Calculator
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -25,6 +25,7 @@ const menuItems = [
   { label: 'Laporan Penjualan', icon: FileBarChart, path: '/reports/sales', group: 'laporan', perm: 'report_sales' },
   { label: 'Laporan Piutang', icon: FileBarChart, path: '/reports/receivables', group: 'laporan', perm: 'report_receivables' },
   { label: 'Traceability Batch', icon: Search, path: '/traceability', group: 'laporan', perm: 'traceability' },
+  { label: 'HPP Produk', icon: Calculator, path: '/hpp', group: 'laporan', perm: 'hpp' },
 ];
 
 const masterItems = [

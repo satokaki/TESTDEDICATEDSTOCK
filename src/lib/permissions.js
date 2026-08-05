@@ -25,6 +25,7 @@ export const MENU_CATALOG = [
   { key: 'report_sales', label: 'Laporan Penjualan', group: 'laporan', actions: ['view'] },
   { key: 'report_receivables', label: 'Laporan Piutang', group: 'laporan', actions: ['view'] },
   { key: 'traceability', label: 'Traceability Batch', group: 'laporan', actions: ['view'] },
+  { key: 'hpp', label: 'HPP Produk', group: 'laporan', actions: ['view'] },
   { key: 'master_brands', label: 'Master Merk', group: 'master', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'master_categories', label: 'Master Kategori', group: 'master', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'master_suppliers', label: 'Master Supplier', group: 'master', actions: ['view', 'create', 'edit', 'delete'] },
@@ -63,6 +64,7 @@ const OPERATOR_DEFAULTS = {
   report_sales: { view: true },
   report_receivables: { view: true },
   traceability: { view: true },
+  hpp: { view: true },
   master: { view: true, create: true, edit: true, delete: false },
   ...Object.fromEntries(MASTER_ENTITY_KEYS.map((k) => [k, { view: true, create: true, edit: true, delete: false }])),
   report_pdf: { view: true },
@@ -83,6 +85,7 @@ const SALES_DEFAULTS = {
   report_receivables: { view: true },
   report_pdf: { view: true },
   invoice_pdf: { view: true },
+  hpp: { view: true },
 };
 
 /** Kepala Produksi: bahan/produk/supplier + pembelian + produksi + bottling/labeling/cukai + stok/traceability. */
@@ -98,6 +101,7 @@ const PRODUCTION_HEAD_DEFAULTS = {
   purchases: { view: true, create: true, edit: true, post: true, cancel: true, print: true },
   stock_card: { view: true },
   traceability: { view: true },
+  hpp: { view: true },
   master_materials: { view: true, create: true, edit: true, delete: false },
   master_products: { view: true, create: true, edit: true, delete: false },
   master_suppliers: { view: true, create: true, edit: true, delete: false },
@@ -116,6 +120,7 @@ const BREWER_DEFAULTS = {
   premix: { view: true, create: true, edit: false, post: false, cancel: false },
   stock_card: { view: true },
   traceability: { view: true },
+  hpp: { view: true },
 };
 
 const ROLE_DEFAULTS = {
@@ -184,6 +189,7 @@ export const ROUTE_ACCESS = [
   { route: '/reports/sales', perm: 'report_sales' },
   { route: '/reports/receivables', perm: 'report_receivables' },
   { route: '/traceability', perm: 'traceability' },
+  { route: '/hpp', perm: 'hpp' },
   { route: '/master/brands', perm: 'master_brands' },
   { route: '/master/categories', perm: 'master_categories' },
   { route: '/master/suppliers', perm: 'master_suppliers' },
