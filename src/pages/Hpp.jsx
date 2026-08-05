@@ -4,7 +4,7 @@ import { useToast } from '@/components/ui/use-toast';
 import PageHeader from '@/components/PageHeader';
 import SearchableSelect from '@/components/SearchableSelect';
 import { Label } from '@/components/ui/label';
-import { Calculator, AlertTriangle, FlaskConical, Package, Tag, Stamp, TrendingUp } from 'lucide-react';
+import { Calculator, AlertTriangle, FlaskConical, Package, Tag, Stamp, TrendingUp, Box } from 'lucide-react';
 import { computeProductHpp } from '@/lib/hppCalculator';
 
 const FINISHED_TYPES = ['barang_siap_jual', 'barang_belum_cukai', 'barang_siap_labeling', 'barang_siap_bottling'];
@@ -238,12 +238,25 @@ export default function Hpp() {
             />
           </div>
 
+          {/* Stage 2b: Box */}
+          <div className="mb-3">
+            <StageCard
+              icon={Box}
+              color="text-orange-600"
+              title="3. Box (Kemasan Luar)"
+              subtitle="Komponen box/kemasan dari mapping produk"
+              rows={hpp.boxRows}
+              subtotal={hpp.boxTotal}
+              perBottleNote={`Per botol: ${fmtMoney(hpp.boxTotal)}`}
+            />
+          </div>
+
           {/* Stage 3: Labeling */}
           <div className="mb-3">
             <StageCard
               icon={Tag}
               color="text-pink-600"
-              title="3. Label / Stiker (Labeling)"
+              title="4. Label / Stiker (Labeling)"
               subtitle="Komponen label dari mapping produk"
               rows={hpp.labelRows}
               subtotal={hpp.labelTotal}
@@ -256,7 +269,7 @@ export default function Hpp() {
             <StageCard
               icon={Stamp}
               color="text-amber-600"
-              title="4. Pita Cukai (Cukai)"
+              title="5. Pita Cukai (Cukai)"
               subtitle="Komponen pita cukai dari mapping produk"
               rows={hpp.exciseRows}
               subtotal={hpp.exciseTotal}
@@ -273,6 +286,7 @@ export default function Hpp() {
             <div className="space-y-1.5 text-[12.5px]">
               <div className="flex justify-between"><span className="text-muted-foreground">Bulk ({hpp.bottleSize} ml)</span><span className="tabular-nums">{fmtMoney(hpp.bulkPerBottle)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Botol</span><span className="tabular-nums">{fmtMoney(hpp.bottleTotal)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Box</span><span className="tabular-nums">{fmtMoney(hpp.boxTotal)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Label / Stiker</span><span className="tabular-nums">{fmtMoney(hpp.labelTotal)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Pita Cukai</span><span className="tabular-nums">{fmtMoney(hpp.exciseTotal)}</span></div>
               <div className="border-t border-primary/20 pt-1.5 flex justify-between items-center">

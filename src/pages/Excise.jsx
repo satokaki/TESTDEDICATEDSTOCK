@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import NumberInput from '@/components/NumberInput';
 import PdfButton from '@/components/PdfButton';
 import { exportDocumentToPDF } from '@/lib/pdfExport';
@@ -25,27 +26,30 @@ export default function Excise() {
   const [products, setProducts] = useState([]);
   const [brands, setBrands] = useState([]);
   const [exciseMaterials, setExciseMaterials] = useState([]);
+  const [boxMaterials, setBoxMaterials] = useState([]);
   const [exciseStocks, setExciseStocks] = useState({});
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+  const [form, setForm] = useState({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '', use_box: false, box_material_id: '', box_material_name: '', box_quantity_per_unit: '1' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [items, balances, prods, brs, mats, matBal] = await Promise.all([
+      const [items, balances, prods, brs, mats, matBal, boxMats] = await Promise.all([
         base44.entities.ExciseOrder.list('-created_date', 100),
         getAllStockBalances('product'),
         base44.entities.Product.filter({ is_active: true }),
         base44.entities.Brand.filter({ is_active: true }),
         base44.entities.Material.filter({ material_type: 'EXCISE', is_active: true }, '-created_date', 500),
         getAllStockBalances('material'),
+        base44.entities.Material.filter({ material_type: 'PACKAGING', is_active: true }, '-created_date', 500),
       ]);
       setData(items);
       setBelumCukaiStock(balances.filter(b => b.inventory_status === 'UNEXCISED' && b.quantity > 0));
       setProducts(prods); setBrands(brs);
       setExciseMaterials(mats);
+      setBoxMaterials(boxMats);
       const sm = {}; matBal.forEach(b => { sm[b.item_id] = (sm[b.item_id] || 0) + (b.available_quantity || 0); });
       setExciseStocks(sm);
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
@@ -55,9 +59,10 @@ export default function Excise() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const exciseTotalRequired = (Number(form.quantity) || 0) * (Number(form.excise_quantity_per_unit) || 0);
+  const boxTotalRequired = (Number(form.quantity) || 0) * (Number(form.box_quantity_per_unit) || 0);
 
   const openAdd = () => {
-    setForm({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+    setForm({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '', use_box: false, box_material_id: '', box_material_name: '', box_quantity_per_unit: '1' });
     setModalOpen(true);
   };
 
@@ -84,6 +89,12 @@ export default function Excise() {
         toast({ variant: 'destructive', title: 'Stok pita cukai tidak cukup', description: `Butuh ${exciseTotalRequired}, stok ${stk}` }); return;
       }
     }
+    if (form.use_box && form.box_material_id) {
+      const stk = exciseStocks[form.box_material_id] || 0;
+      if (boxTotalRequired > stk) {
+        toast({ variant: 'destructive', title: 'Stok box tidak cukup', description: `Butuh ${boxTotalRequired}, stok ${stk}` }); return;
+      }
+    }
     setSubmitting(true);
     try {
       const product = products.find(p => p.id === form.product_id);
@@ -99,6 +110,11 @@ export default function Excise() {
         excise_reference_number: form.excise_reference_number,
         excise_material_id: form.excise_material_id || '', excise_material_name: form.excise_material_name || '',
         excise_quantity_per_unit: Number(form.excise_quantity_per_unit) || 1, excise_total_required: form.excise_material_id ? exciseTotalRequired : 0,
+        use_box: !!form.use_box,
+        box_material_id: form.use_box ? form.box_material_id : '',
+        box_material_name: form.use_box ? form.box_material_name : '',
+        box_quantity_per_unit: form.use_box ? (Number(form.box_quantity_per_unit) || 1) : 0,
+        box_total_required: form.use_box && form.box_material_id ? boxTotalRequired : 0,
         excise_date: form.excise_date, operator: form.operator,
         status: 'siap_jual', notes: form.notes,
       });
@@ -116,6 +132,15 @@ export default function Excise() {
           inventory_status: '', quantity_out: exciseTotalRequired, unit: mat?.unit || 'unit',
           transaction_type: 'excise_consumption', transaction_number: excNumber,
           reference_type: 'excise', reference_id: excise.id, notes: `Pita cukai untuk ${excNumber}`,
+        });
+      }
+      if (form.use_box && form.box_material_id) {
+        const boxMat = boxMaterials.find(m => m.id === form.box_material_id);
+        await recordStockMovement({
+          item_type: 'material', item_id: form.box_material_id, item_name: form.box_material_name, item_code: boxMat?.code || '',
+          inventory_status: '', quantity_out: boxTotalRequired, unit: boxMat?.unit || 'pcs',
+          transaction_type: 'excise_consumption', transaction_number: excNumber,
+          reference_type: 'excise', reference_id: excise.id, notes: `Box kemasan untuk ${excNumber}`,
         });
       }
       await recordStockMovement({
@@ -143,6 +168,7 @@ export default function Excise() {
           { label: 'No. Batch', value: row.batch_number || '-' },
           { label: 'Ukuran', value: row.bottle_size ? `${row.bottle_size} ml` : '-' },
           { label: 'Pita Cukai', value: row.excise_material_name || row.excise_label_type || '-' },
+          { label: 'Box', value: row.use_box ? `${row.box_material_name || '-'} (${row.box_total_required || 0})` : 'Tanpa Box' },
           { label: 'No. Dokumen', value: row.document_number || '-' },
           { label: 'Ref. Cukai', value: row.excise_reference_number || '-' },
           { label: 'Jumlah', value: row.quantity },
@@ -166,6 +192,7 @@ export default function Excise() {
     { key: 'batch_number', header: 'Batch', className: 'font-mono' },
     { key: 'quantity', header: 'Jumlah', render: (row) => <span className="tabular-nums">{row.quantity}</span> },
     { key: 'excise_material_name', header: 'Pita Cukai', render: (row) => row.excise_material_name || row.excise_label_type || '—' },
+    { key: 'box_material_name', header: 'Box', render: (row) => row.use_box ? (row.box_material_name || '—') : <span className="text-muted-foreground">—</span> },
     { key: 'excise_reference_number', header: 'Ref. Cukai', render: (row) => row.excise_reference_number || '—' },
     { key: 'excise_date', header: 'Tanggal', sortable: true },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
@@ -209,6 +236,31 @@ export default function Excise() {
             </SelectContent>
           </Select>
           {exciseMaterials.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada barang tipe Pita Cukai. Tambahkan di Master Barang (Tipe: Pita Cukai). Proses cukai tetap bisa jalan tanpa konsumsi stok pita.</p>}
+        </div>
+        <div className="rounded-md border border-border p-3 bg-muted/20">
+          <div className="flex items-center gap-2 mb-2">
+            <Switch checked={form.use_box} onCheckedChange={v => setForm(f => ({ ...f, use_box: v, box_material_id: v ? f.box_material_id : '', box_material_name: v ? f.box_material_name : '' }))} />
+            <Label className="text-[12.5px]">Proses Lanjutan: Gunakan Box (Kemasan Luar)</Label>
+          </div>
+          {form.use_box && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <Label className="text-[12.5px] mb-1">Box (Kemasan)</Label>
+                <Select value={form.box_material_id} onValueChange={v => { const m = boxMaterials.find(x => x.id === v); setForm(f => ({ ...f, box_material_id: v, box_material_name: m?.name || '' })); }}>
+                  <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih box dari stok" /></SelectTrigger>
+                  <SelectContent>
+                    {boxMaterials.map(m => {
+                      const stk = exciseStocks[m.id] || 0;
+                      return <SelectItem key={m.id} value={m.id} disabled={stk <= 0}>{m.name} · Stok {stk} {m.unit || 'pcs'}</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
+                {boxMaterials.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada bahan tipe Kemasan (PACKAGING) di Master Bahan.</p>}
+              </div>
+              <div><Label className="text-[12.5px] mb-1">Per Unit</Label><NumberInput value={form.box_quantity_per_unit} onChange={v => setForm({ ...form, box_quantity_per_unit: v })} allowDecimal maxDecimals={4} min={0} className="h-9 text-[13px]" /></div>
+              <div className="col-span-3 text-[11.5px] text-muted-foreground">Total butuh box: <span className="font-semibold tabular-nums">{form.box_material_id ? boxTotalRequired : '—'}</span> {form.box_material_id ? (boxMaterials.find(m => m.id === form.box_material_id)?.unit || 'pcs') : ''}</div>
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div><Label className="text-[12.5px] mb-1">Per Unit</Label><NumberInput value={form.excise_quantity_per_unit} onChange={v => setForm({ ...form, excise_quantity_per_unit: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>

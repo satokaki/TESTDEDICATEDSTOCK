@@ -44,6 +44,8 @@ export function computeProductHpp({ product, recipe, ingredients, materials, map
     bulkPerBottle: 0,
     bottleRows: [],
     bottleTotal: 0,
+    boxRows: [],
+    boxTotal: 0,
     labelRows: [],
     labelTotal: 0,
     exciseRows: [],
@@ -109,13 +111,15 @@ export function computeProductHpp({ product, recipe, ingredients, materials, map
       });
 
   result.bottleRows = buildComp('bottle');
+  result.boxRows = buildComp('box');
   result.labelRows = buildComp('label');
   result.exciseRows = buildComp('excise');
   result.bottleTotal = result.bottleRows.reduce((s, r) => s + r.cost, 0);
+  result.boxTotal = result.boxRows.reduce((s, r) => s + r.cost, 0);
   result.labelTotal = result.labelRows.reduce((s, r) => s + r.cost, 0);
   result.exciseTotal = result.exciseRows.reduce((s, r) => s + r.cost, 0);
 
-  result.hppPerBottle = result.bulkPerBottle + result.bottleTotal + result.labelTotal + result.exciseTotal;
+  result.hppPerBottle = result.bulkPerBottle + result.bottleTotal + result.boxTotal + result.labelTotal + result.exciseTotal;
   result.margin = result.salePrice - result.hppPerBottle;
   result.marginPct = result.salePrice > 0 ? (result.margin / result.salePrice) * 100 : 0;
 

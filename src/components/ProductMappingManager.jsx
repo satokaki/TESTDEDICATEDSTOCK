@@ -12,6 +12,7 @@ import { getAllStockBalances } from '@/lib/stockUtils';
 
 const COMPONENTS = [
   { type: 'bottle', label: 'Botol', materialTypes: ['BOTTLE'], perUnit: false },
+  { type: 'box', label: 'Box', materialTypes: ['PACKAGING'], perUnit: true },
   { type: 'label', label: 'Label', materialTypes: ['LABEL', 'STICKER'], perUnit: true },
   { type: 'excise', label: 'Cukai', materialTypes: ['EXCISE'], perUnit: true },
 ];
@@ -24,6 +25,7 @@ export default function ProductMappingManager({ product, onClose }) {
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState({
     bottle: { material_id: '', quantity_per_unit: '1' },
+    box: { material_id: '', quantity_per_unit: '1' },
     label: { material_id: '', quantity_per_unit: '1' },
     excise: { material_id: '', quantity_per_unit: '1' },
   });
@@ -157,12 +159,14 @@ export default function ProductMappingManager({ product, onClose }) {
         <Tabs defaultValue="bottle">
           <TabsList className="w-full">
             <TabsTrigger value="bottle" className="flex-1">Botol</TabsTrigger>
+            <TabsTrigger value="box" className="flex-1">Box</TabsTrigger>
             <TabsTrigger value="label" className="flex-1">Label</TabsTrigger>
             <TabsTrigger value="excise" className="flex-1">Cukai</TabsTrigger>
           </TabsList>
           <TabsContent value="bottle" className="pt-3"><Section comp={COMPONENTS[0]} /></TabsContent>
-          <TabsContent value="label" className="pt-3"><Section comp={COMPONENTS[1]} /></TabsContent>
-          <TabsContent value="excise" className="pt-3"><Section comp={COMPONENTS[2]} /></TabsContent>
+          <TabsContent value="box" className="pt-3"><Section comp={COMPONENTS[1]} /></TabsContent>
+          <TabsContent value="label" className="pt-3"><Section comp={COMPONENTS[2]} /></TabsContent>
+          <TabsContent value="excise" className="pt-3"><Section comp={COMPONENTS[3]} /></TabsContent>
         </Tabs>
       )}
       <div className="text-[11px] text-muted-foreground bg-muted/30 rounded px-2 py-1.5 mt-2">
