@@ -235,7 +235,7 @@ export default function Excise() {
               })}
             </SelectContent>
           </Select>
-          {exciseMaterials.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada barang tipe Pita Cukai. Tambahkan di Master Barang (Tipe: Pita Cukai). Proses cukai tetap bisa jalan tanpa konsumsi stok pita.</p>}
+          {exciseMaterials.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada bahan tipe Pita Cukai (EXCISE). Tambahkan di Master Bahan (Tipe: Cukai/Excise). Proses cukai tetap bisa jalan tanpa konsumsi stok pita.</p>}
         </div>
         <div className="rounded-md border border-border p-3 bg-muted/20">
           <div className="flex items-center gap-2 mb-2">
