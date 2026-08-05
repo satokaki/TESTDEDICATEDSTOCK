@@ -72,16 +72,23 @@ export default function InventoryReport() {
     return balances
       .filter((b) => {
         if (!b.item_id) return false;
-        if (filterStatus && b.inventory_status !== filterStatus) return false;
-        return true;
+        if (!filterStatus) return true;
+        const norm = (!b.inventory_status && b.item_type === 'material') ? 'RAW_MATERIAL' : b.inventory_status;
+        return norm === filterStatus;
       })
       .map((b) => {
         const mat = materialById[b.item_id];
         const unitCost = Number(mat?.last_purchase_price) || 0;
         const qty = Number(b.quantity) || 0;
+        // Materials keep inventory_status '' (backward-compat with purchase-created
+        // balances) — normalize to RAW_MATERIAL for display & filtering.
+        const normalizedStatus = (!b.inventory_status && b.item_type === 'material')
+          ? 'RAW_MATERIAL'
+          : b.inventory_status;
         return {
           ...b,
-          status_label: STATUS_LABEL[b.inventory_status] || b.inventory_status || '—',
+          inventory_status: normalizedStatus,
+          status_label: STATUS_LABEL[normalizedStatus] || normalizedStatus || '—',
           unit_cost: unitCost,
           nilai_stok: qty * unitCost,
         };
