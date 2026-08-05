@@ -133,6 +133,17 @@ export default function Purchases() {
     return { ...it, base_quantity: (qty === null ? '' : String(qty * cf)) };
   };
 
+  const refreshMasters = useCallback(async () => {
+    try {
+      const [mats, prods] = await Promise.all([
+        base44.entities.Material.filter({ is_active: true }, '-created_date', 500),
+        base44.entities.Product.filter({ is_active: true }, '-created_date', 500),
+      ]);
+      setMaterials(mats);
+      setProducts(prods);
+    } catch { /* silent; keep existing list */ }
+  }, []);
+
   const openAdd = () => {
     setEditing(null);
     setForm({
@@ -143,6 +154,7 @@ export default function Purchases() {
       items: [emptyItem()],
     });
     setModalOpen(true);
+    refreshMasters();
   };
 
   const openEdit = async (row) => {
@@ -169,9 +181,10 @@ export default function Purchases() {
       })),
     });
     setModalOpen(true);
-  };
+    refreshMasters();
+    };
 
-  const onSupplierChange = (v) => {
+    const onSupplierChange = (v) => {
     const sup = suppliers.find(s => s.id === v);
     setForm(prev => ({ ...prev, supplier_id: v, supplier_name: sup?.name || '', payment_terms: prev.payment_terms || '' }));
   };
