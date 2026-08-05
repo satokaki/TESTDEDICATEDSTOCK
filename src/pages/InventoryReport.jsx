@@ -79,16 +79,6 @@ export default function InventoryReport() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // [COST_TRACE] temporary runtime audit — remove after RCA resolved
-  useEffect(() => {
-    console.log('[COST_TRACE] INVENTORY_COST_RUNTIME_VERSION=' + INVENTORY_COST_RUNTIME_VERSION);
-    const tracedMats = materials.filter(m =>
-      ['Biscuit Think', 'PUTIH Propylene Glycol (PG)', 'BIRU Vegetable Glycerine (VG)'].includes(m.name)
-    ).map(m => ({ id: m.id, name: m.name, unit: m.unit, last_purchase_price: m.last_purchase_price, updated_date: m.updated_date }));
-    console.table(tracedMats);
-    console.log('[COST_TRACE][stageCostIndex][IZZI]', stageCostIndex['6a734c20f2f6babf7768fbb7']);
-  }, [materials, stageCostIndex]);
-
   const materialById = useMemo(() => {
     const map = {};
     materials.forEach((x) => { map[x.id] = x; });
@@ -101,6 +91,16 @@ export default function InventoryReport() {
     () => buildStageCostIndex({ products, recipes, ingredients, materials, mappings, pgMaterial, vgMaterial }),
     [products, recipes, ingredients, materials, mappings, pgMaterial, vgMaterial]
   );
+
+  // [COST_TRACE] temporary runtime audit — remove after RCA resolved
+  useEffect(() => {
+    console.log('[COST_TRACE] INVENTORY_COST_RUNTIME_VERSION=' + INVENTORY_COST_RUNTIME_VERSION);
+    const tracedMats = materials.filter(m =>
+      ['Biscuit Think', 'PUTIH Propylene Glycol (PG)', 'BIRU Vegetable Glycerine (VG)'].includes(m.name)
+    ).map(m => ({ id: m.id, name: m.name, unit: m.unit, last_purchase_price: m.last_purchase_price, updated_date: m.updated_date }));
+    console.table(tracedMats);
+    console.log('[COST_TRACE][stageCostIndex][IZZI]', stageCostIndex['6a734c20f2f6babf7768fbb7']);
+  }, [materials, stageCostIndex]);
 
   const rows = useMemo(() => {
     const traced = balances
