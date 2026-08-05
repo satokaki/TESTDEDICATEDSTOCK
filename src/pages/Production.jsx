@@ -18,9 +18,12 @@ import { recordStockMovement, getStockBalance, createAuditLog } from '@/lib/stoc
 import NumberInput from '@/components/NumberInput';
 import PdfButton from '@/components/PdfButton';
 import { exportDocumentToPDF } from '@/lib/pdfExport';
+import { useAuth } from '@/lib/AuthContext';
+import { canSelectRecipeForProduction, isRecipeFormulaHidden } from '@/lib/permissions';
 
 export default function Production() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [data, setData] = useState([]);
   const [recipes, setRecipes] = useState([]);
   const [materials, setMaterials] = useState([]);
@@ -323,6 +326,8 @@ export default function Production() {
 
   const selectedRecipe = recipes.find(r => r.id === form.recipe_id);
   const isPremix = selectedRecipe?.recipe_type === 'PREMIX';
+  const visibleRecipes = recipes.filter(r => canSelectRecipeForProduction(user, r));
+  const formulaHidden = isRecipeFormulaHidden(user, selectedRecipe);
   const basis = selectedRecipe?.calculation_basis || 'W_W';
   const targetUnit = isPremix ? (basis === 'W_W' ? 'Gram' : 'ml') : 'ml';
   const targetLabel = isPremix ? `Target Produksi (${targetUnit}) *` : 'Target Volume (ml) *';
@@ -342,7 +347,7 @@ export default function Production() {
             <Label className="text-[12.5px] mb-1">Resep (Approved) *</Label>
             <Select value={form.recipe_id} onValueChange={v => setForm({ ...form, recipe_id: v })}>
               <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih resep approved" /></SelectTrigger>
-              <SelectContent>{recipes.map(r => <SelectItem key={r.id} value={r.id}>{r.code} · {r.name} (v{r.version})</SelectItem>)}</SelectContent>
+              <SelectContent>{visibleRecipes.map(r => <SelectItem key={r.id} value={r.id}>{r.code} · {r.name} (v{r.version})</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div><Label className="text-[12.5px] mb-1">{targetLabel}</Label><NumberInput value={form.target_volume} onChange={v => setForm({ ...form, target_volume: v })} allowDecimal min={0} maxDecimals={2} className="h-9 text-[13px]" /></div>
@@ -360,7 +365,7 @@ export default function Production() {
               <div className="bg-muted/40 rounded px-2 py-1.5">Calculation Basis: <b>{isPremix ? basis : '—'}</b></div>
               <div className="bg-muted/40 rounded px-2 py-1.5">Target Produksi: <b>{Number(form.target_volume || 0).toLocaleString('id-ID')} {targetUnit}</b></div>
               <div className="bg-muted/40 rounded px-2 py-1.5">Satuan: <b>{isPremix ? (basis === 'W_W' ? 'Gram' : 'ml') : 'ml'}</b></div>
-              <div className="bg-muted/40 rounded px-2 py-1.5">Total Formula: <b>{totalFormulaPct.toFixed(2)}%</b></div>
+              {!formulaHidden && <div className="bg-muted/40 rounded px-2 py-1.5">Total Formula: <b>{totalFormulaPct.toFixed(2)}%</b></div>}
               <div className="bg-muted/40 rounded px-2 py-1.5">Total Kebutuhan: <b>{totalRequirement.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} gram</b></div>
             </div>
           </div>
@@ -374,7 +379,7 @@ export default function Production() {
               <table className="w-full text-[11.5px]">
                 <thead><tr className="bg-muted/40 text-muted-foreground">
                   <th className="px-2 py-1 text-left">Bahan</th>
-                  <th className="px-2 py-1 text-right">Persentase</th>
+                  {!formulaHidden && <th className="px-2 py-1 text-right">Persentase</th>}
                   <th className="px-2 py-1 text-right">Kebutuhan (ml)</th>
                   <th className="px-2 py-1 text-right">Kebutuhan (gram)</th>
                   <th className="px-2 py-1 text-right">Stok Tersedia{isPremix ? ' (gram)' : ''}</th>
@@ -384,7 +389,7 @@ export default function Production() {
                   {stockCheck.map((item, i) => (
                     <tr key={i} className="border-b border-border/30">
                       <td className="px-2 py-1">{item.material_name}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{item.percentage.toFixed(2)}%</td>
+                      {!formulaHidden && <td className="px-2 py-1 text-right tabular-nums">{item.percentage.toFixed(2)}%</td>}
                       <td className="px-2 py-1 text-right tabular-nums">{item.volumeMl.toFixed(2)}</td>
                       <td className="px-2 py-1 text-right tabular-nums">{item.gram.toFixed(2)}</td>
                       <td className="px-2 py-1 text-right tabular-nums">{item.stockAvailable.toFixed(2)}</td>

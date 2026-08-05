@@ -37,6 +37,10 @@ export const MENU_CATALOG = [
   { key: 'invoice_pdf', label: 'Export PDF Invoice', group: 'sistem', actions: ['view'] },
   { key: 'users', label: 'Manajemen Pengguna', group: 'sistem', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'settings', label: 'Pengaturan', group: 'sistem', actions: ['view'] },
+  { key: 'recipe_visibility', label: 'Kelola Visibilitas Resep', group: 'sistem', actions: ['view'] },
+  { key: 'recipe_hidden_view', label: 'Lihat Resep Tersembunyi', group: 'sistem', actions: ['view'] },
+  { key: 'recipe_restricted_view', label: 'Lihat Resep Role-Restricted', group: 'sistem', actions: ['view'] },
+  { key: 'recipe_use_without_formula_view', label: 'Produksi Tanpa Lihat Formula', group: 'sistem', actions: ['view'] },
 ];
 
 const MASTER_ENTITY_KEYS = ['master_brands', 'master_categories', 'master_suppliers', 'master_customers', 'master_materials', 'master_products', 'master_warehouses'];
@@ -201,4 +205,55 @@ export function canAccessRoute(user, path) {
   const entry = ROUTE_ACCESS.find((r) => r.route === path);
   if (!entry) return true;
   return hasPermission(user, entry.perm, 'view');
+}
+
+/** Whether the user may manage recipe visibility (admin / recipe.visibility.manage). */
+export function canManageRecipeVisibility(user) {
+  return hasPermission(user, 'recipe_visibility', 'view');
+}
+
+/** Whether the user may view hidden/admin-only recipes (admin / recipe.hidden.view). */
+export function canViewHiddenRecipe(user) {
+  return hasPermission(user, 'recipe_hidden_view', 'view');
+}
+
+/** Whether the user may use a recipe in production without seeing its formula. */
+export function canUseRecipeWithoutFormulaView(user) {
+  return hasPermission(user, 'recipe_use_without_formula_view', 'view');
+}
+
+/**
+ * Whether the given user may VIEW a recipe (list / detail).
+ * ADMIN_ONLY is backend-enforced via RLS (admin-only); this helper additionally
+ * enforces is_hidden + ROLE_RESTRICTED on the client.
+ */
+export function canViewRecipe(user, recipe) {
+  if (!user || !recipe) return false;
+  if (user.role === 'admin') return true;
+  if (!hasPermission(user, 'recipes', 'view')) return false;
+  const vt = recipe.visibility_type || 'PUBLIC_INTERNAL';
+  if (vt === 'ADMIN_ONLY') return canViewHiddenRecipe(user);
+  if (recipe.is_hidden && !canViewHiddenRecipe(user)) return false;
+  if (vt === 'ROLE_RESTRICTED') {
+    if (hasPermission(user, 'recipe_restricted_view', 'view')) return true;
+    const allowed = recipe.allowed_role_ids || [];
+    return Array.isArray(allowed) && allowed.includes(user.role);
+  }
+  return true; // PUBLIC_INTERNAL
+}
+
+/** Whether the user may SELECT a recipe in Production (view, or use-without-formula). */
+export function canSelectRecipeForProduction(user, recipe) {
+  if (!user || !recipe) return false;
+  if (user.role === 'admin') return true;
+  if (canViewRecipe(user, recipe)) return true;
+  return !!(recipe.allow_production_without_formula_view && canUseRecipeWithoutFormulaView(user));
+}
+
+/** Whether the formula (percentages) must be hidden from this user for this recipe. */
+export function isRecipeFormulaHidden(user, recipe) {
+  if (!user || !recipe) return false;
+  if (user.role === 'admin') return false;
+  if (canViewHiddenRecipe(user)) return false;
+  return recipe.is_hidden === true || recipe.visibility_type === 'ADMIN_ONLY';
 }

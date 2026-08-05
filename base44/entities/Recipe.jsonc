@@ -108,11 +108,54 @@
     "approval_date": {
       "type": "string",
       "format": "date-time"
+    },
+    "visibility_type": {
+      "type": "string",
+      "enum": [
+        "PUBLIC_INTERNAL",
+        "ADMIN_ONLY",
+        "ROLE_RESTRICTED"
+      ],
+      "default": "PUBLIC_INTERNAL",
+      "description": "Visibilitas resep. PUBLIC_INTERNAL = semua user berizin (recipe.view); ADMIN_ONLY = hanya admin / recipe.hidden.view (di-enforce backend via RLS); ROLE_RESTRICTED = role terpilih (allowed_role_ids, di-enforce client)."
+    },
+    "is_hidden": {
+      "type": "boolean",
+      "default": false,
+      "description": "Sembunyikan dari Brewer/non-admin di UI. True => resep tak tampil di daftar/search/produksi kecuali user memiliki recipe.hidden.view, atau allow_production_without_formula_view + recipe.use_without_formula_view (mode produksi tanpa lihat formula)."
+    },
+    "allow_production_without_formula_view": {
+      "type": "boolean",
+      "default": false,
+      "description": "Jika true, user dengan recipe.use_without_formula_view dapat memilih resep ini di Produksi tanpa melihat persentase/formula (hanya nama, kode, versi, kebutuhan bahan)."
+    },
+    "allowed_role_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Daftar role yang boleh melihat resep saat visibility_type=ROLE_RESTRICTED (mis. ['brewer','production_head'])."
     }
   },
   "required": [
     "code",
     "name",
     "status"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.visibility_type": {
+            "$ne": "ADMIN_ONLY"
+          }
+        }
+      ]
+    }
+  }
 }

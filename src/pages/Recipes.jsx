@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Copy, CheckCircle, Trash2, Calculator, X } from 'lucide-react';
+import { Plus, Pencil, Copy, CheckCircle, Trash2, Calculator, X, Eye, EyeOff } from 'lucide-react';
 import NumberInput from '@/components/NumberInput';
 import { toNumber } from '@/lib/decimalInput';
 import { calculateRecipe } from '@/lib/recipeCalculator';
@@ -18,6 +18,11 @@ import { createAuditLog } from '@/lib/stockUtils';
 import { generateRecipeCode } from '@/lib/sequence';
 import { validatePremixRecipe, buildPremixCompositionMap } from '@/lib/premix';
 import RecipeIngredientPicker from '@/components/RecipeIngredientPicker';
+import { useAuth } from '@/lib/AuthContext';
+import { canViewRecipe, canManageRecipeVisibility } from '@/lib/permissions';
+import { ROLES } from '@/lib/roles';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const recipeTypes = [
   { value: 'FINISHED_PRODUCT', label: 'Produk Jadi' },
@@ -31,6 +36,9 @@ const calcBases = [
 
 export default function Recipes() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canManageVis = canManageRecipeVisibility(user);
+  const isAdmin = user?.role === 'admin';
   const [data, setData] = useState([]);
   const [brands, setBrands] = useState([]);
   const [products, setProducts] = useState([]);
@@ -40,12 +48,14 @@ export default function Recipes() {
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [calcResult, setCalcResult] = useState(null);
+  const [visFilter, setVisFilter] = useState('all');
   const [form, setForm] = useState({
     code: '', name: '', brand_id: '', product_id: '',
     recipe_type: 'FINISHED_PRODUCT', output_material_id: '', calculation_basis: 'W_W',
     target_quantity: 1000, target_unit: 'gram',
     target_volume: 1000, target_nicotine: 3, target_pg: 40, target_vg: 60,
     status: 'draft', notes: '',
+    visibility_type: 'PUBLIC_INTERNAL', is_hidden: false, allow_production_without_formula_view: false, allowed_role_ids: [],
     ingredients: [],
   });
 
@@ -105,6 +115,7 @@ export default function Recipes() {
       target_quantity: 1000, target_unit: 'gram',
       target_volume: 1000, target_nicotine: 3, target_pg: 40, target_vg: 60,
       status: 'draft', notes: '', ingredients: [],
+      visibility_type: 'PUBLIC_INTERNAL', is_hidden: false, allow_production_without_formula_view: false, allowed_role_ids: [],
     });
     setCalcResult(null);
     setModalOpen(true);
@@ -120,6 +131,8 @@ export default function Recipes() {
       target_volume: item.target_volume || 1000, target_nicotine: item.target_nicotine || 3,
       target_pg: item.target_pg || 40, target_vg: item.target_vg || 60,
       status: item.status, notes: item.notes || '',
+      visibility_type: item.visibility_type || 'PUBLIC_INTERNAL', is_hidden: !!item.is_hidden,
+      allow_production_without_formula_view: !!item.allow_production_without_formula_view, allowed_role_ids: item.allowed_role_ids || [],
       ingredients: ingredients.map(i => ({ id: i.id, material_id: i.material_id, material_name: i.material_name, material_type: i.material_type, is_premix: i.is_premix || (i.material_type === 'premix'), percentage: i.percentage, density: i.density, pg_content: i.pg_content, vg_content: i.vg_content, nicotine_strength: i.nicotine_strength, concentration_value: i.concentration_value, mix_order: i.mix_order, notes: i.notes })),
     });
     setModalOpen(true);
@@ -191,6 +204,10 @@ export default function Recipes() {
         target_vg: toNumber(form.target_vg),
         total_flavor: totalFlavor,
         status: form.status, notes: form.notes,
+        visibility_type: form.visibility_type || 'PUBLIC_INTERNAL',
+        is_hidden: !!form.is_hidden,
+        allow_production_without_formula_view: !!form.allow_production_without_formula_view,
+        allowed_role_ids: form.allowed_role_ids || [],
       };
       let recipeId;
       if (editing) {
@@ -213,6 +230,14 @@ export default function Recipes() {
         nicotine_strength: Number(i.nicotine_strength), mix_order: i.mix_order || 0, notes: i.notes || '',
       })));
       await createAuditLog({ module: 'Resep', action: editing ? 'Edit' : 'Tambah', entity_type: 'Recipe', entity_id: recipeId, reference_number: recipeCode });
+      if (editing && canManageVis) {
+        const visChanged = (editing.visibility_type || 'PUBLIC_INTERNAL') !== (form.visibility_type || 'PUBLIC_INTERNAL')
+          || !!editing.is_hidden !== !!form.is_hidden
+          || JSON.stringify(editing.allowed_role_ids || []) !== JSON.stringify(form.allowed_role_ids || []);
+        if (visChanged) {
+          await createAuditLog({ module: 'Resep', action: 'RECIPE_VISIBILITY_CHANGED', entity_type: 'Recipe', entity_id: recipeId, reference_number: recipeCode, notes: `${editing.visibility_type || 'PUBLIC_INTERNAL'} -> ${form.visibility_type}; hidden ${!!editing.is_hidden} -> ${!!form.is_hidden}` });
+        }
+      }
       toast({ title: editing ? 'Resep diperbarui' : 'Resep dibuat' });
       setModalOpen(false); loadData();
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
@@ -243,6 +268,16 @@ export default function Recipes() {
     } catch { toast({ variant: 'destructive', title: 'Gagal menduplikasi' }); }
   };
 
+  const toggleHide = async (row) => {
+    if (!confirm(row.is_hidden ? `Tampilkan resep "${row.name}"?` : `Sembunyikan resep "${row.name}" dari Brewer?`)) return;
+    try {
+      await base44.entities.Recipe.update(row.id, { is_hidden: !row.is_hidden });
+      await createAuditLog({ module: 'Resep', action: row.is_hidden ? 'RECIPE_UNHIDDEN' : 'RECIPE_HIDDEN', entity_type: 'Recipe', entity_id: row.id, reference_number: row.code, notes: `is_hidden: ${!!row.is_hidden} -> ${!row.is_hidden}` });
+      toast({ title: row.is_hidden ? 'Resep ditampilkan' : 'Resep disembunyikan dari Brewer' });
+      loadData();
+    } catch { toast({ variant: 'destructive', title: 'Gagal mengubah visibilitas' }); }
+  };
+
   const columns = [
     { key: 'code', header: 'Kode', sortable: true, className: 'font-mono font-medium' },
     { key: 'name', header: 'Nama Resep', sortable: true, className: 'font-medium' },
@@ -253,12 +288,22 @@ export default function Recipes() {
     { key: 'target_volume', header: 'Target', render: (row) => `${row.target_volume || 0} ml` },
     { key: 'target_nicotine', header: 'Nic', render: (row) => `${row.target_nicotine || 0} mg` },
     { key: 'version', header: 'Versi', render: (row) => `v${row.version || 1}` },
+    { key: 'visibility', header: 'Visibilitas', render: (row) => {
+      if (row.is_hidden) return <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-medium">Brewer Tersembunyi</span>;
+      const vt = row.visibility_type || 'PUBLIC_INTERNAL';
+      if (vt === 'ADMIN_ONLY') return <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-700 rounded font-medium">Hanya Admin</span>;
+      if (vt === 'ROLE_RESTRICTED') return <span className="text-[10px] px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded font-medium">Role Tertentu</span>;
+      return <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded font-medium">Semua User</span>;
+    } },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
     {
       key: 'actions', header: '', width: '120px',
       render: (row) => (
         <div className="flex items-center gap-1">
           <button onClick={() => openEdit(row)} className="p-1.5 hover:bg-muted rounded" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
+          {isAdmin && (
+            <button onClick={() => toggleHide(row)} className="p-1.5 hover:bg-amber-50 rounded text-amber-600" title={row.is_hidden ? 'Tampilkan' : 'Sembunyikan dari Brewer'}>{row.is_hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}</button>
+          )}
           {row.status === 'approved' ? (
             <span className="p-1.5 text-emerald-500" title="Disetujui"><CheckCircle className="w-3.5 h-3.5" /></span>
           ) : (
@@ -273,12 +318,33 @@ export default function Recipes() {
   const mcLabel = { flavor: 'Flavor', propylene_glycol: 'PG', vegetable_glycerin: 'VG', nicotine: 'Nicotine', sweetener: 'Sweetener', cooling: 'Cooling', additive: 'Additive', premix: 'Premix', lainnya: 'Lainnya' };
   const tpPg = toNumber(form.target_pg);
   const tpVg = toNumber(form.target_vg);
+  const visibleData = (isAdmin ? data : data.filter(r => canViewRecipe(user, r))).filter(r => {
+    if (visFilter === 'all') return true;
+    if (visFilter === 'public') return (r.visibility_type || 'PUBLIC_INTERNAL') === 'PUBLIC_INTERNAL' && !r.is_hidden;
+    if (visFilter === 'admin_only') return r.visibility_type === 'ADMIN_ONLY';
+    if (visFilter === 'restricted') return r.visibility_type === 'ROLE_RESTRICTED';
+    if (visFilter === 'hidden') return !!r.is_hidden;
+    return true;
+  });
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
       <PageHeader title="Master Resep" description="Formulasi resep e-liquid dengan kalkulasi otomatis"
         actions={<Button onClick={openAdd} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Tambah Resep</Button>} />
-      <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada resep" searchKeys={['code', 'name', 'brand_name']} searchPlaceholder="Cari resep..." />
+      <div className="flex items-center gap-2 mb-3">
+        <Label className="text-[12.5px]">Filter Visibilitas:</Label>
+        <Select value={visFilter} onValueChange={setVisFilter}>
+          <SelectTrigger className="h-8 text-[12.5px] w-48"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Visibilitas</SelectItem>
+            <SelectItem value="public">Semua User</SelectItem>
+            <SelectItem value="admin_only">Hanya Admin</SelectItem>
+            <SelectItem value="restricted">Role Tertentu</SelectItem>
+            <SelectItem value="hidden">Disembunyikan dari Brewer</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <DataTable columns={columns} data={visibleData} loading={loading} emptyMessage="Belum ada resep" searchKeys={['code', 'name', 'brand_name']} searchPlaceholder="Cari resep..." />
 
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Resep' : 'Tambah Resep'} onSubmit={handleSubmit} submitting={submitting} submitLabel="Simpan Resep" size="xl">
         <div className="grid grid-cols-3 gap-3">
@@ -433,6 +499,56 @@ export default function Recipes() {
                 </tr></tfoot>
               </table>
             </div>
+          </div>
+        )}
+        {/* Visibilitas Resep */}
+        {canManageVis && (
+          <div className="border-t pt-3 mt-3">
+            <Label className="text-[12.5px] font-semibold mb-2 block">Visibilitas Resep</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-[12.5px] mb-1">Tipe Visibilitas</Label>
+                <Select value={form.visibility_type} onValueChange={v => setForm({ ...form, visibility_type: v })}>
+                  <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PUBLIC_INTERNAL">Semua User Berizin</SelectItem>
+                    <SelectItem value="ADMIN_ONLY">Hanya Admin</SelectItem>
+                    <SelectItem value="ROLE_RESTRICTED">Role Tertentu</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2 justify-center">
+                <label className="flex items-center gap-2 text-[12.5px] cursor-pointer">
+                  <Switch checked={!!form.is_hidden} onCheckedChange={v => setForm({ ...form, is_hidden: v })} />
+                  Sembunyikan resep ini dari Brewer
+                </label>
+                <label className="flex items-center gap-2 text-[12.5px] cursor-pointer">
+                  <Switch checked={!!form.allow_production_without_formula_view} onCheckedChange={v => setForm({ ...form, allow_production_without_formula_view: v })} />
+                  Izinkan produksi tanpa melihat formula
+                </label>
+              </div>
+            </div>
+            {form.visibility_type === 'ROLE_RESTRICTED' && (
+              <div className="mt-2">
+                <Label className="text-[12.5px] mb-1">Role yang boleh melihat</Label>
+                <div className="flex flex-wrap gap-3">
+                  {ROLES.filter(r => r.value !== 'admin').map(r => (
+                    <label key={r.value} className="flex items-center gap-1.5 text-[12px] cursor-pointer">
+                      <Checkbox
+                        checked={!!(form.allowed_role_ids || []).includes(r.value)}
+                        onCheckedChange={v => setForm(f => ({ ...f, allowed_role_ids: v ? [...(f.allowed_role_ids || []), r.value] : (f.allowed_role_ids || []).filter(x => x !== r.value) }))}
+                      />
+                      {r.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {form.is_hidden && (
+              <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                ⚠ Resep tersembunyi tak tampil di daftar/search Brewer. Untuk formula yang benar-benar rahasia (termasuk dari API), gunakan <b>Hanya Admin</b> (di-enforce backend).
+              </div>
+            )}
           </div>
         )}
         <div><Label className="text-[12.5px] mb-1">Catatan</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} className="text-[13px]" /></div>
