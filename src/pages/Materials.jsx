@@ -159,13 +159,13 @@ export default function Materials() {
         supplier_name: isRecipeType ? (sup?.name || '') : '',
         category_name: cat?.name || '',
       };
-      if (editing) { await base44.entities.Material.update(editing.id, payload); toast({ title: 'Barang diperbarui' }); }
+      if (editing) { await base44.entities.Material.update(editing.id, payload); toast({ title: 'Bahan diperbarui' }); }
       else {
         const code = isPremix
           ? await generatePremixMaterialCode((form.name || 'XX').substring(0, 4).toUpperCase(), Number(form.concentration_value) || 0)
           : await generateMaterialCode();
         await base44.entities.Material.create({ ...payload, code });
-        toast({ title: 'Barang ditambahkan' });
+        toast({ title: 'Bahan ditambahkan' });
       }
       setModalOpen(false); loadData();
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
@@ -173,14 +173,14 @@ export default function Materials() {
   };
 
   const handleDelete = async (item) => {
-    if (!confirm(`Nonaktifkan barang "${item.name}"?`)) return;
-    try { await base44.entities.Material.update(item.id, { is_active: false }); toast({ title: 'Barang dinonaktifkan' }); loadData(); }
+    if (!confirm(`Nonaktifkan bahan "${item.name}"?`)) return;
+    try { await base44.entities.Material.update(item.id, { is_active: false }); toast({ title: 'Bahan dinonaktifkan' }); loadData(); }
     catch { toast({ variant: 'destructive', title: 'Gagal' }); }
   };
 
   const columns = [
     { key: 'code', header: 'Kode', sortable: true, className: 'font-mono font-medium' },
-    { key: 'name', header: 'Nama Barang', sortable: true, className: 'font-medium' },
+    { key: 'name', header: 'Nama Bahan', sortable: true, className: 'font-medium' },
     { key: 'category_name', header: 'Kategori', render: (row) => row.category_name || '—' },
     { key: 'material_type', header: 'Tipe', render: (row) => row.material_type === 'PREMIX'
       ? <span className="text-[11px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold">Premix</span>
@@ -206,10 +206,13 @@ export default function Materials() {
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Master Barang" description="Bahan baku, kemasan, botol, label, stiker, pita cukai. Kemasan cukup nama + kategori."
-        actions={<Button onClick={openAdd} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Tambah Barang</Button>} />
-      <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada barang" searchKeys={['code', 'name']} searchPlaceholder="Cari barang..." />
-      <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Barang' : 'Tambah Barang'} onSubmit={handleSubmit} submitting={submitting} size="lg">
+      <PageHeader title="Master Bahan" description="Semua bahan penentu HPP: essence, nicotine, PG/VG, premix, botol, label, stiker, pita cukai. Produk jadi simpan di Master Barang."
+        actions={<Button onClick={openAdd} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Tambah Bahan</Button>} />
+      <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
+        <span className="font-semibold">Aturan:</span> daftarkan di sini semua bahan yang ikut menghitung HPP produksi (essence, nicotine, PG, VG, premix, botol, label, stiker, pita cukai). Master Barang khusus untuk <span className="font-semibold">produk jadi</span> (barang siap jual / hasil akhir).
+      </div>
+      <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada bahan" searchKeys={['code', 'name']} searchPlaceholder="Cari bahan..." />
+      <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Bahan' : 'Tambah Bahan'} onSubmit={handleSubmit} submitting={submitting} size="lg">
         <div className="grid grid-cols-2 gap-3">
           <div><Label className="text-[12.5px] mb-1">Kode</Label><Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly /></div>
           <div><Label className="text-[12.5px] mb-1">Nama Barang *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="mis. Botol 60ml White Flat" className="h-9 text-[13px]" /></div>

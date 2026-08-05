@@ -133,8 +133,11 @@ export default function Products() {
 
   return (
     <div className="p-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Master Barang" description="Kode barang auto-generate (BRG-KAT-00001)"
+      <PageHeader title="Master Barang" description="Khusus produk jadi (barang siap jual / hasil akhir). Bahan penentu HPP simpan di Master Bahan."
         actions={<Button onClick={openAdd} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Tambah Barang</Button>} />
+      <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] text-blue-700">
+        <span className="font-semibold">Aturan:</span> Master Barang hanya untuk <span className="font-semibold">produk jadi</span> yang dijual. Bahan penentu HPP (essence, nicotine, PG/VG, premix, botol, label, stiker, pita cukai) simpan di Master Bahan.
+      </div>
       <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada barang" searchKeys={['code', 'name', 'brand_name', 'sku']} searchPlaceholder="Cari barang..." />
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Barang' : 'Tambah Barang'} onSubmit={handleSubmit} submitting={submitting} size="lg">
         <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2 text-[11.5px] text-blue-700 mb-1">
