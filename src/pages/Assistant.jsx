@@ -69,26 +69,30 @@ export default function Assistant() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
+  const createConversation = async () => {
+    const conv = await base44.agents.createConversation({ agent_name: AGENT_NAME, metadata: { name: 'Bantuan Operasi' } });
+    const id = conv.id || conv._id;
+    setCurrentId(id);
+    setMessages([]);
+    loadConversations();
+    return id;
+  };
+
   const newConversation = async () => {
-    try {
-      const conv = base44.agents.createConversation({ agent_name: AGENT_NAME, metadata: { name: 'Bantuan Operasi' } });
-      const id = conv.id || conv._id;
-      setCurrentId(id);
-      setMessages([]);
-      await loadConversations();
-    } catch (e) { toast({ variant: 'destructive', title: 'Gagal membuat percakapan', description: e.message }); }
+    try { await createConversation(); }
+    catch (e) { toast({ variant: 'destructive', title: 'Gagal membuat percakapan', description: e.message }); }
   };
 
   const send = async () => {
     if (!input.trim() || sending) return;
-    if (!currentId) { await newConversation(); }
     const text = input.trim();
     setInput('');
     setSending(true);
     try {
-      const conv = await base44.agents.getConversation(currentId);
+      let id = currentId;
+      if (!id) id = await createConversation();
+      const conv = await base44.agents.getConversation(id);
       await base44.agents.addMessage(conv, { role: 'user', content: text });
-      await loadConversations();
     } catch (e) { toast({ variant: 'destructive', title: 'Gagal mengirim', description: e.message }); setInput(text); }
     finally { setSending(false); }
   };
