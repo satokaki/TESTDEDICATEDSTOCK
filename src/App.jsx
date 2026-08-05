@@ -21,6 +21,7 @@ import SalesReport from '@/pages/SalesReport';
 import ReceivablesReport from '@/pages/ReceivablesReport';
 import BatchTraceability from '@/pages/BatchTraceability';
 import Settings from '@/pages/Settings';
+import DatabaseManagement from '@/pages/DatabaseManagement';
 import Brands from '@/pages/Brands';
 import Categories from '@/pages/Categories';
 import Suppliers from '@/pages/Suppliers';
@@ -79,6 +80,7 @@ const AuthenticatedApp = () => {
           <Route path="/reports/receivables" element={<ReceivablesReport />} />
           <Route path="/traceability" element={<BatchTraceability />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/database" element={<DatabaseManagement />} />
           <Route path="/users" element={<Users />} />
           <Route path="/master/brands" element={<Brands />} />
           <Route path="/master/categories" element={<Categories />} />

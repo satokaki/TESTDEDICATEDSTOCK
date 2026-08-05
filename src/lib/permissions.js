@@ -41,6 +41,7 @@ export const MENU_CATALOG = [
   { key: 'recipe_hidden_view', label: 'Lihat Resep Tersembunyi', group: 'sistem', actions: ['view'] },
   { key: 'recipe_restricted_view', label: 'Lihat Resep Role-Restricted', group: 'sistem', actions: ['view'] },
   { key: 'recipe_use_without_formula_view', label: 'Produksi Tanpa Lihat Formula', group: 'sistem', actions: ['view'] },
+  { key: 'database', label: 'Database Management', group: 'sistem', actions: ['view', 'backup', 'restore', 'reset'] },
 ];
 
 const MASTER_ENTITY_KEYS = ['master_brands', 'master_categories', 'master_suppliers', 'master_customers', 'master_materials', 'master_products', 'master_warehouses'];
@@ -191,6 +192,7 @@ export const ROUTE_ACCESS = [
   { route: '/master/products', perm: 'master_products' },
   { route: '/master/warehouses', perm: 'master_warehouses' },
   { route: '/users', perm: 'users' },
+  { route: '/database', perm: 'database' },
   { route: '/settings', perm: 'settings' },
 ];
 

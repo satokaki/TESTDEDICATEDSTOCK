@@ -168,6 +168,19 @@ export default function Layout() {
               <span>Pengguna & Akses</span>
             </Link>
           )}
+          {canSee('database') && (
+            <Link
+              to="/database"
+              onClick={() => setSidebarOpen(false)}
+              className={cn(
+                'flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors',
+                isActive('/database') ? 'bg-primary text-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent'
+              )}
+            >
+              <Database className="w-4 h-4 shrink-0" />
+              <span>Database Management</span>
+            </Link>
+          )}
           {canSee('settings') && (
             <Link
               to="/settings"
