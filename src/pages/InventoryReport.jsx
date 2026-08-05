@@ -201,6 +201,52 @@ export default function InventoryReport() {
         </div>
       </div>
 
+      {/* [COST_TRACE] temporary debug panel — remove after RCA resolved */}
+      <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-3 text-[11.5px] font-mono overflow-x-auto">
+        <div className="font-bold mb-2">COST DEBUG (runtime v{INVENTORY_COST_RUNTIME_VERSION})</div>
+        {(() => {
+          const IZZI = '6a734c20f2f6babf7768fbb7';
+          const findMat = (nm) => materials.find((m) => m.name && m.name.includes(nm));
+          const biscuit = findMat('Biscuit Think');
+          const pg = findMat('Propylene Glycol');
+          const vg = findMat('Vegetable Glycerin');
+          const stage = stageCostIndex[IZZI];
+          const izziRow = rows.find((r) => r.batch_number === 'BATCH-IZZ-20260805-003' && r.inventory_status === 'READY_FOR_LABELING');
+          const Row = ({ label, v }) => (
+            <div className="flex flex-wrap gap-2">
+              <span className="text-muted-foreground w-44 shrink-0">{label}</span>
+              <span className="font-semibold">{String(v)}</span>
+              <span className="text-blue-600">[{typeof v}]</span>
+              <span className="text-emerald-700">{JSON.stringify(v)}</span>
+            </div>
+          );
+          return (
+            <div className="space-y-1">
+              <div className="font-semibold mt-2">Material runtime (dari Material.list()):</div>
+              <Row label="Biscuit Think id" v={biscuit?.id} />
+              <Row label="Biscuit Think last_purchase_price" v={biscuit?.last_purchase_price} />
+              <Row label="PG id" v={pg?.id} />
+              <Row label="PG last_purchase_price" v={pg?.last_purchase_price} />
+              <Row label="VG id" v={vg?.id} />
+              <Row label="VG last_purchase_price" v={vg?.last_purchase_price} />
+              <div className="font-semibold mt-2">stageCostIndex[IZZI]:</div>
+              <Row label="BULK" v={stage?.BULK} />
+              <Row label="READY_FOR_LABELING" v={stage?.READY_FOR_LABELING} />
+              <Row label="UNEXCISED" v={stage?.UNEXCISED} />
+              <Row label="READY_FOR_SALE" v={stage?.READY_FOR_SALE} />
+              <div className="font-semibold mt-2">Final row BATCH-IZZ-20260805-003 (READY_FOR_LABELING):</div>
+              <Row label="quantity" v={izziRow?.quantity} />
+              <Row label="item_id" v={izziRow?.item_id} />
+              <Row label="batch_id" v={izziRow?.batch_id} />
+              <Row label="unit_cost (RAW)" v={izziRow?.unit_cost} />
+              <Row label="nilai_stok (RAW)" v={izziRow?.nilai_stok} />
+              <Row label="unit_cost formatted" v={fmtMoney(izziRow?.unit_cost)} />
+              <Row label="nilai_stok formatted" v={fmtMoney(izziRow?.nilai_stok)} />
+            </div>
+          );
+        })()}
+      </div>
+
       <DataTable
         columns={columns}
         data={rows}
