@@ -86,7 +86,26 @@
     @apply border-border outline-ring/50;
   }
 
+  html, body, #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
   body {
     @apply bg-background text-foreground font-body;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Prevent iPhone auto-zoom on focus for inputs < 16px on small screens */
+  @media (max-width: 640px) {
+    input[type="text"], input[type="email"], input[type="password"],
+    input[type="number"], input[type="date"], input[type="tel"],
+    input[type="search"], input[type="url"], select, textarea {
+      font-size: 16px !important;
+    }
   }
 }

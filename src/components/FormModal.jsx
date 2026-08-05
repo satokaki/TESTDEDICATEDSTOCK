@@ -10,13 +10,13 @@ export default function FormModal({ open, onClose, title, onSubmit, submitLabel 
         <DialogHeader>
           <DialogTitle className="text-[15px] font-bold">{title}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit?.(); }}>
-          <div className="space-y-3.5 py-2 max-h-[60vh] overflow-y-auto">
+        <form onSubmit={(e) => { e.preventDefault(); onSubmit?.(); }} className="flex flex-col gap-3">
+          <div className="space-y-3.5 py-1 min-w-0">
             {children}
           </div>
-          <DialogFooter className="mt-4">
-            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Batal</Button>
-            <Button type="submit" disabled={submitting}>
+          <DialogFooter className="sticky bottom-0 bg-background pt-3 mt-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={submitting} className="w-full sm:w-auto h-10 sm:h-9">Batal</Button>
+            <Button type="submit" disabled={submitting} className="w-full sm:w-auto h-10 sm:h-9">
               {submitting ? "Menyimpan..." : submitLabel}
             </Button>
           </DialogFooter>

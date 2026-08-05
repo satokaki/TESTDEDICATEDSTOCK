@@ -434,23 +434,23 @@ export default function Purchases() {
         } />
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-3">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-3">
         <Select value={filters.supplier} onValueChange={v => setFilters(f => ({ ...f, supplier: v }))}>
-          <SelectTrigger className="h-8 w-48 text-[12px]"><SelectValue placeholder="Semua Supplier" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full sm:w-48 text-[12px]"><SelectValue placeholder="Semua Supplier" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Supplier</SelectItem>
             {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filters.payment_method} onValueChange={v => setFilters(f => ({ ...f, payment_method: v }))}>
-          <SelectTrigger className="h-8 w-36 text-[12px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full sm:w-36 text-[12px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Metode</SelectItem>
             {paymentMethods.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filters.status} onValueChange={v => setFilters(f => ({ ...f, status: v }))}>
-          <SelectTrigger className="h-8 w-40 text-[12px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full sm:w-40 text-[12px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Status</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
@@ -466,7 +466,7 @@ export default function Purchases() {
       {/* Form modal */}
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Pembelian' : 'Pembelian Baru'} onSubmit={handleSubmit} submitting={submitting} size="xl" submitLabel="Simpan Draft">
         {/* Header fields */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           <div>
             <Label className="text-[12.5px] mb-1">Supplier *</Label>
             <Select value={form.supplier_id} onValueChange={onSupplierChange}>
@@ -504,7 +504,65 @@ export default function Purchases() {
             <Label className="text-[12.5px] font-semibold">Item Pembelian</Label>
             <Button type="button" size="sm" variant="outline" onClick={addItemRow} className="gap-1.5 h-7 text-[12px]"><Plus className="w-3.5 h-3.5" /> Tambah Baris</Button>
           </div>
-          <div className="border border-border rounded-lg overflow-x-auto">
+          {/* Mobile item cards */}
+          <div className="md:hidden space-y-3">
+            {form.items.map((it, idx) => (
+              <div key={idx} className="border border-border rounded-lg p-3 bg-muted/10">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10.5px] font-semibold text-muted-foreground">ITEM {idx + 1}</span>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => duplicateRow(idx)} className="p-1 hover:bg-muted rounded" title="Duplikasi"><Plus className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => removeItemRow(idx)} className="p-1 hover:bg-red-50 rounded text-red-500" title="Hapus"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-[11.5px] mb-1">Jenis</Label>
+                    <Select value={it.item_type} onValueChange={v => { const m = getMaster(v, it.item_id); updateItem(idx, { item_type: v, item_id: '', ...snapshotItem(v, m) }); }}>
+                      <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>{itemTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-[11.5px] mb-1">Item</Label>
+                    {it.item_type === 'material' ? (
+                      <Select value={it.item_id} onValueChange={v => onSelectItem(idx, 'material', v)}>
+                        <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue placeholder="Pilih bahan" /></SelectTrigger>
+                        <SelectContent className="max-h-60">{materials.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    ) : (
+                      <Select value={it.item_id} onValueChange={v => onSelectItem(idx, it.item_type, v)}>
+                        <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue placeholder="Pilih barang" /></SelectTrigger>
+                        <SelectContent className="max-h-60">{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><Label className="text-[11.5px] mb-1">Batch/Lot</Label><Input value={it.batch_supplier} onChange={e => updateItem(idx, { batch_supplier: e.target.value })} placeholder="Batch" className="h-9 text-[13px]" /></div>
+                    <div><Label className="text-[11.5px] mb-1">Exp</Label><Input type="date" value={it.expiry_date} onChange={e => updateItem(idx, { expiry_date: e.target.value })} className="h-9 text-[13px]" /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><Label className="text-[11.5px] mb-1">Qty</Label><NumberInput value={it.quantity} onChange={v => updateItem(idx, { quantity: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
+                    <div><Label className="text-[11.5px] mb-1">Unit</Label><Input value={it.unit} onChange={e => updateItem(idx, { unit: e.target.value })} placeholder="unit" className="h-9 text-[13px]" /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><Label className="text-[11.5px] mb-1">Konversi</Label><NumberInput value={it.conversion_factor} onChange={v => updateItem(idx, { conversion_factor: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
+                    <div><Label className="text-[11.5px] mb-1">Qty Dasar</Label><div className="h-9 flex items-center text-[13px] tabular-nums text-muted-foreground">{(() => { const q = toNum(it.quantity); const c = toNum(it.conversion_factor) || 1; return q === null ? '—' : (q * c); })()}</div></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><Label className="text-[11.5px] mb-1">Harga</Label><NumberInput value={it.unit_price} onChange={v => updateItem(idx, { unit_price: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
+                    <div><Label className="text-[11.5px] mb-1">Diskon</Label><NumberInput value={it.discount} onChange={v => updateItem(idx, { discount: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                    <span className="text-[11.5px] text-muted-foreground">Subtotal</span>
+                    <span className="text-[13px] font-medium tabular-nums">{fmtMoney(computeSubtotal(it))}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Desktop item table */}
+          <div className="hidden md:block border border-border rounded-lg overflow-x-auto">
             <table className="w-full text-[12px]">
               <thead className="bg-muted/40 text-muted-foreground">
                 <tr>
@@ -567,7 +625,7 @@ export default function Purchases() {
         </div>
 
         {/* Totals */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-border">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-border">
           <div><Label className="text-[12.5px] mb-1">Subtotal</Label><div className="text-[13px] font-semibold tabular-nums">{fmtMoney(totals.subtotal)}</div></div>
           <div><Label className="text-[12.5px] mb-1">Diskon Total</Label><NumberInput value={form.discount} onChange={v => setForm({ ...form, discount: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
           <div><Label className="text-[12.5px] mb-1">Pajak</Label><NumberInput value={form.tax} onChange={v => setForm({ ...form, tax: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
