@@ -31,11 +31,13 @@
         "PREMIX",
         "PACKAGING",
         "LABEL",
+        "STICKER",
+        "BOTTLE",
         "CONSUMABLE",
         "FINISHED_GOOD"
       ],
       "default": "RAW_MATERIAL",
-      "description": "Klasifikasi bahan: RAW_MATERIAL (bahan baku beli), PREMIX (setengah jadi hasil produksi internal), FINISHED_GOOD (barang jadi)"
+      "description": "Klasifikasi bahan: RAW_MATERIAL (bahan baku), PREMIX (setengah jadi internal), PACKAGING (kemasan umum), LABEL (label), STICKER (stiker), BOTTLE (botol), FINISHED_GOOD (barang jadi)"
     },
     "is_internally_produced": {
       "type": "boolean",
@@ -45,7 +47,7 @@
     "is_recipe_ingredient": {
       "type": "boolean",
       "default": true,
-      "description": "Boleh dipilih sebagai ingredient resep. Default true untuk RAW_MATERIAL/PREMIX; admin set false untuk mengecualikan bahan tertentu. Packaging/Label/Excise/Finished Good tetap tidak tampil di picker karena di-gate via material_type."
+      "description": "Boleh dipilih sebagai ingredient resep."
     },
     "concentration_value": {
       "type": "number",
@@ -125,6 +127,38 @@
     },
     "notes": {
       "type": "string"
+    },
+    "bottle_size_ml": {
+      "type": "number",
+      "description": "Ukuran botol/label (ml) untuk pencocokan otomatis saat bottling/labeling. Wajib untuk BOTTLE; opsional untuk LABEL/STICKER (universal boleh kosong)."
+    },
+    "color": {
+      "type": "string",
+      "description": "Warna (botol/label), mis. Transparan, Hitam, Putih"
+    },
+    "model": {
+      "type": "string",
+      "description": "Model/bentuk botol, mis. Chubby Gorilla, Unicorn"
+    },
+    "cap_type": {
+      "type": "string",
+      "description": "Jenis tutup jika satu paket dengan botol"
+    },
+    "material_spec": {
+      "type": "string",
+      "description": "Material (PET, PE, kertas, vinyl, dll)"
+    },
+    "brand_id": {
+      "type": "string",
+      "description": "Merk terkait (untuk label/botol khusus merk). Kosong = universal."
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Produk terkait (untuk label/botol khusus produk). Kosong = universal."
+    },
+    "label_type": {
+      "type": "string",
+      "description": "Jenis label: depan, belakang, batch, universal"
     }
   },
   "required": [

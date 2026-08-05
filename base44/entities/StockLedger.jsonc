@@ -20,10 +20,13 @@
         "production_output",
         "production_waste",
         "bottling_consumption",
+        "bottling_bottle_consumption",
         "bottling_output",
         "bottling_waste",
         "labeling_consumption",
+        "label_consumption",
         "labeling_output",
+        "labeling_waste",
         "excise_consumption",
         "excise_output",
         "sales",
@@ -48,7 +51,7 @@
     },
     "inventory_status": {
       "type": "string",
-      "description": "Status persediaan baris balance yang terpengaruh (RAW_MATERIAL, BULK, READY_FOR_LABELING, UNEXCISED, READY_FOR_SALE, QUARANTINE, REJECTED) \u2014 untuk rekonsiliasi per stage."
+      "description": "Status persediaan baris balance yang terpengaruh (RAW_MATERIAL, BULK, READY_FOR_LABELING, UNEXCISED, READY_FOR_SALE, QUARANTINE, REJECTED) \u2014 untuk rekonsiliasi per stage. Material konsumsi pakai '' (sesuai balance hasil pembelian)."
     },
     "item_id": {
       "type": "string"

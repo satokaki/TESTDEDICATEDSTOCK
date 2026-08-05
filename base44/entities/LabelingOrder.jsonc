@@ -33,7 +33,32 @@
     },
     "label_type": {
       "type": "string",
-      "description": "Jenis label"
+      "description": "Jenis label (legacy / snapshot nama label utama)"
+    },
+    "label_item_id": {
+      "type": "string",
+      "description": "ID item label utama (snapshot; detail multi-label di LabelingMaterial)"
+    },
+    "label_item_code": {
+      "type": "string"
+    },
+    "label_item_name": {
+      "type": "string"
+    },
+    "label_quantity_per_unit": {
+      "type": "number",
+      "default": 1,
+      "description": "Kebutuhan label utama per unit produk"
+    },
+    "label_total_required": {
+      "type": "number",
+      "description": "Total kebutuhan label utama (qty \u00d7 per_unit)"
+    },
+    "label_color": {
+      "type": "string"
+    },
+    "label_model": {
+      "type": "string"
     },
     "operator": {
       "type": "string"

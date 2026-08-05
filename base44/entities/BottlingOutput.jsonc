@@ -28,6 +28,28 @@
       "type": "number",
       "description": "Total volume (ml)"
     },
+    "bottle_item_id": {
+      "type": "string",
+      "description": "ID item botol (Material material_type=BOTTLE) yang dikonsumsi"
+    },
+    "bottle_item_code": {
+      "type": "string"
+    },
+    "bottle_item_name": {
+      "type": "string"
+    },
+    "bottle_color": {
+      "type": "string",
+      "description": "Warna botol (snapshot)"
+    },
+    "bottle_model": {
+      "type": "string",
+      "description": "Model botol (snapshot)"
+    },
+    "bottle_stock_used": {
+      "type": "number",
+      "description": "Jumlah botol dikonsumsi dari stok (biasanya = bottle_count)"
+    },
     "output_status": {
       "type": "string",
       "enum": [
