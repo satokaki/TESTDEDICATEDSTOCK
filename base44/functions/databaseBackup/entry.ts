@@ -11,25 +11,40 @@ export default async function (req) {
     if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await req.json().catch(() => ({}));
-    const { name, notes } = body;
+    const { name, notes, backup_type = 'operational', encrypt = false, password } = body;
+    if (encrypt && !password) return Response.json({ error: 'Password enkripsi wajib saat Encrypt Backup aktif.' }, { status: 400 });
+    if (backup_type && !['operational', 'full'].includes(backup_type)) {
+      return Response.json({ error: 'backup_type tidak valid (operational / full).' }, { status: 400 });
+    }
 
     const result = await createBackup(base44, {
       name,
       notes,
       createdBy: user.email || user.id,
       environment: APP_ENVIRONMENT,
+      backupType: backup_type,
+      encrypt: !!encrypt,
+      password,
     });
 
     await base44.asServiceRole.entities.AuditLog.create({
       action_time: new Date().toISOString(),
       user_name: user.email || user.full_name || 'admin',
       module: 'database',
-      action: 'DATABASE_BACKUP_CREATED',
+      action: 'DATABASE_BACKUP_FILE_CREATED',
       entity_type: 'DatabaseBackup',
       entity_id: result.record.id,
       reference_number: result.record.backup_code,
       reason: notes || 'Backup created',
-      data_after: JSON.stringify({ recordCount: result.recordCount, checksum: result.checksum, fileSize: result.fileSize, environment: APP_ENVIRONMENT }),
+      data_after: JSON.stringify({
+        recordCount: result.recordCount,
+        checksum: result.checksum,
+        fileSize: result.fileSize,
+        fileName: result.fileName,
+        backupType: backup_type,
+        encrypted: !!encrypt,
+        environment: APP_ENVIRONMENT,
+      }),
     });
 
     return Response.json({ ok: true, backup: result.record });

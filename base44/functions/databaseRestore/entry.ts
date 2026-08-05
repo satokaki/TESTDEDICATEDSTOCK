@@ -1,16 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
-import {
-  APP_ENVIRONMENT,
-  RESTORE_ORDER,
-  RESTORE_REFS,
-  TRANSACTION_ENTITIES,
-  FULL_ONLY_ENTITIES,
-  createBackup,
-  sha256hex,
-  stripBuiltins,
-  remapRecord,
-  isReferencedByOthers,
-} from '../../shared/dbManagement.js';
+import { APP_ENVIRONMENT, parseAndValidateBackup, performRestore } from '../../shared/dbManagement.js';
 
 export default async function (req) {
   let base44;
@@ -35,77 +24,25 @@ export default async function (req) {
     if (!backup) return Response.json({ error: 'Backup tidak ditemukan' }, { status: 404 });
     if (backup.status !== 'COMPLETED') return Response.json({ error: 'Backup belum selesai atau gagal' }, { status: 400 });
 
-    // Verify checksum
     const signed = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({ file_uri: backup.storage_path, expires_in: 120 });
     const resp = await fetch(signed.signed_url);
     if (!resp.ok) return Response.json({ error: 'Gagal mengambil file backup' }, { status: 500 });
     const text = await resp.text();
-    const checksum = await sha256hex(text);
-    if (checksum !== backup.checksum) {
+
+    const v = await parseAndValidateBackup(text, { recordChecksum: backup.checksum });
+    if (!v.ok) {
       await base44.asServiceRole.entities.AuditLog.create({
         action_time: new Date().toISOString(),
         user_name: user.email || '',
         module: 'database',
         action: 'DATABASE_RESTORE_FAILED',
         reference_number: backup.backup_code,
-        reason: 'Checksum mismatch',
+        reason: v.error,
       });
-      return Response.json({ error: 'Checksum backup tidak valid. Restore dibatalkan.' }, { status: 400 });
-    }
-    const snapshot = JSON.parse(text);
-    const tables = snapshot.tables || {};
-
-    // Auto-backup current state before restore
-    let autoBackupCode = null;
-    if (autoBackup) {
-      try {
-        const ab = await createBackup(base44, {
-          name: `Auto-backup sebelum restore ${backup.backup_code}`,
-          notes: 'Auto backup sebelum restore',
-          createdBy: user.email || user.id,
-          environment: APP_ENVIRONMENT,
-        });
-        autoBackupCode = ab.record.backup_code;
-      } catch {}
+      return Response.json({ error: v.error }, { status: 400 });
     }
 
-    // Delete current operational data (full operational reset)
-    const entities = [...TRANSACTION_ENTITIES, ...FULL_ONLY_ENTITIES];
-    for (const name of entities) {
-      try { await base44.asServiceRole.entities[name].deleteMany({}); } catch {}
-    }
-
-    // Restore in order with ID remap
-    const idMaps = {};
-    const restored = {};
-    for (const name of RESTORE_ORDER) {
-      idMaps[name] = idMaps[name] || {};
-      const rows = tables[name] || [];
-      if (rows.length === 0) { restored[name] = 0; continue; }
-      let count = 0;
-      if (isReferencedByOthers(name)) {
-        for (const row of rows) {
-          const cleaned = stripBuiltins(row);
-          const remapped = remapRecord(name, cleaned, idMaps);
-          try {
-            const created = await base44.asServiceRole.entities[name].create(remapped);
-            if (created && created.id && row.id) idMaps[name][row.id] = created.id;
-            count++;
-          } catch {}
-        }
-      } else {
-        const payload = rows.map((r) => remapRecord(name, stripBuiltins(r), idMaps));
-        try {
-          await base44.asServiceRole.entities[name].bulkCreate(payload);
-          count = payload.length;
-        } catch {
-          for (const p of payload) {
-            try { await base44.asServiceRole.entities[name].create(p); count++; } catch {}
-          }
-        }
-      }
-      restored[name] = count;
-    }
+    const result = await performRestore(base44, v.tables, { mode, autoBackup, createdBy: user.email || user.id });
 
     await base44.asServiceRole.entities.AuditLog.create({
       action_time: new Date().toISOString(),
@@ -113,11 +50,11 @@ export default async function (req) {
       module: 'database',
       action: 'DATABASE_RESTORE_COMPLETED',
       reference_number: backup.backup_code,
-      reason: `mode=${mode}; autoBackup=${autoBackupCode || 'none'}; environment=${APP_ENVIRONMENT}`,
-      data_after: JSON.stringify(restored),
+      reason: `mode=${mode}; autoBackup=${result.autoBackupCode || 'none'}; environment=${APP_ENVIRONMENT}`,
+      data_after: JSON.stringify(result.restored),
     });
 
-    return Response.json({ ok: true, mode, backup_code: backup.backup_code, autoBackup: autoBackupCode, restored });
+    return Response.json({ ok: true, mode, backup_code: backup.backup_code, autoBackup: result.autoBackupCode, restored: result.restored });
   } catch (error) {
     try {
       if (base44 && user) {
