@@ -43,6 +43,23 @@ const materialCategories = [
 const mcLabel = (v) => materialCategories.find(t => t.value === v)?.label || v;
 const units = [{ value: 'gram', label: 'Gram' }, { value: 'mililiter', label: 'Mililiter' }, { value: 'unit', label: 'Unit' }];
 
+// Memetakan tipe bahan ke jenis kategori Master Kategori agar dropdown kategori
+// menampilkan scope yang sesuai (mis. PACKAGING -> kemasan, LABEL -> label).
+const CATEGORY_TYPE_BY_MATERIAL_TYPE = {
+  RAW_MATERIAL: 'bahan',
+  PREMIX: 'bahan',
+  PACKAGING: 'kemasan',
+  BOTTLE: 'kemasan',
+  LABEL: 'label',
+  STICKER: 'label',
+  CONSUMABLE: 'barang',
+  FINISHED_GOOD: 'produk_jadi',
+};
+const catTypeLabel = (materialType) => {
+  const t = CATEGORY_TYPE_BY_MATERIAL_TYPE[materialType] || 'bahan';
+  return ({ bahan: 'bahan', kemasan: 'kemasan', label: 'label', barang: 'barang', produk_jadi: 'produk jadi' })[t] || t;
+};
+
 export default function Materials() {
   const { toast } = useToast();
   const [data, setData] = useState([]);
@@ -72,14 +89,15 @@ export default function Materials() {
   // Refetch kategori bahan aktif tiap kali form dibuka agar kategori baru langsung muncul
   // tanpa hard refresh, dan tetap tampilkan kategori material yang sedang diedit walau nonaktif.
   const [catError, setCatError] = useState(false);
-  const refreshCategories = useCallback(async (currentCategoryId) => {
+  const refreshCategories = useCallback(async (currentCategoryId, materialType) => {
     try {
       setCatError(false);
-      let cats = await base44.entities.Category.filter({ category_type: 'bahan', is_active: true });
+      const catType = CATEGORY_TYPE_BY_MATERIAL_TYPE[materialType] || 'bahan';
+      let cats = await base44.entities.Category.filter({ category_type: catType, is_active: true });
       if (currentCategoryId && !cats.some(c => c.id === currentCategoryId)) {
         try {
           const cur = await base44.entities.Category.get(currentCategoryId);
-          if (cur && cur.category_type === 'bahan') cats = [cur, ...cats];
+          if (cur && cur.category_type === catType) cats = [cur, ...cats];
         } catch { /* kategori mungkin sudah dihapus; abaikan */ }
       }
       setCategories(cats);
@@ -90,11 +108,11 @@ export default function Materials() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const openAdd = () => { setEditing(null); setForm({ code: '', name: '', material_type: 'RAW_MATERIAL', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, is_internally_produced: false, concentration_value: '', concentration_unit: 'PERCENT_WW', carrier_material_id: '', default_density: '', notes: '' }); refreshCategories(null); setModalOpen(true); };
+  const openAdd = () => { setEditing(null); setForm({ code: '', name: '', material_type: 'RAW_MATERIAL', category_id: '', material_category: 'flavor', supplier_id: '', unit: 'gram', density: '', pg_content: '', vg_content: '', nicotine_strength: '', min_stock: '', last_purchase_price: '', is_active: true, is_internally_produced: false, concentration_value: '', concentration_unit: 'PERCENT_WW', carrier_material_id: '', default_density: '', notes: '' });     refreshCategories(null, 'RAW_MATERIAL'); setModalOpen(true); };
   const openEdit = (item) => {
     setEditing(item);
     setForm({ code: item.code, name: item.name, material_type: item.material_type || 'RAW_MATERIAL', category_id: item.category_id || '', material_category: item.material_category, supplier_id: item.supplier_id || '', unit: item.unit, density: item.density ?? '', pg_content: item.pg_content ?? '', vg_content: item.vg_content ?? '', nicotine_strength: item.nicotine_strength ?? '', min_stock: item.min_stock ?? '', last_purchase_price: item.last_purchase_price ?? '', is_active: item.is_active, is_internally_produced: item.is_internally_produced ?? false, concentration_value: item.concentration_value ?? '', concentration_unit: item.concentration_unit || 'PERCENT_WW', carrier_material_id: item.carrier_material_id || '', default_density: item.default_density ?? '', notes: item.notes || '' });
-    refreshCategories(item.category_id);
+    refreshCategories(item.category_id, item.material_type);
     setModalOpen(true);
   };
 
@@ -185,16 +203,16 @@ export default function Materials() {
             {catError ? (
               <div className="flex items-center gap-2 h-9">
                 <span className="text-[12px] text-destructive">Daftar kategori gagal dimuat.</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => refreshCategories(editing?.category_id)}>Coba Lagi</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => refreshCategories(editing?.category_id, form.material_type)}>Coba Lagi</Button>
               </div>
             ) : categories.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground italic">Belum ada kategori bahan. Tambahkan kategori pada Master Kategori.</p>
+              <p className="text-[12px] text-muted-foreground italic">Belum ada kategori {catTypeLabel(form.material_type)}. Tambahkan kategori (Jenis: {catTypeLabel(form.material_type)}) pada Master Kategori.</p>
             ) : (
               <SearchableSelect
                 value={form.category_id}
                 onValueChange={v => setForm({ ...form, category_id: v })}
                 options={categories.map(c => ({ value: c.id, label: c.is_active === false ? `${c.name} (Nonaktif)` : c.name, keywords: c.code }))}
-                placeholder="Cari kategori bahan..."
+                placeholder={`Cari kategori ${catTypeLabel(form.material_type)}...`}
                 className="h-9"
               />
             )}
@@ -208,7 +226,7 @@ export default function Materials() {
           </div>
           <div>
             <Label className="text-[12.5px] mb-1">Tipe Bahan</Label>
-            <Select value={form.material_type} onValueChange={v => setForm({ ...form, material_type: v })}>
+            <Select value={form.material_type} onValueChange={v => { setForm(f => ({ ...f, material_type: v, category_id: '' })); refreshCategories(null, v); }}>
               <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
               <SelectContent>{materialTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
             </Select>
