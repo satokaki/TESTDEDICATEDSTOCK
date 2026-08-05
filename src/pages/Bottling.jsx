@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import NumberInput from '@/components/NumberInput';
+import SearchableSelect from '@/components/SearchableSelect';
 import { Plus } from 'lucide-react';
 import { generateOrderNumber } from '@/lib/sequence';
 import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
@@ -153,15 +154,15 @@ export default function Bottling() {
         </div>
         <div>
           <Label className="text-[12.5px] mb-1">Botol (Tipe Botol) *</Label>
-          <Select value={form.bottle_item_id} onValueChange={v => setForm({ ...form, bottle_item_id: v })}>
-            <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih botol dari stok" /></SelectTrigger>
-            <SelectContent>
-              {bottleMaterials.map(m => {
-                const stk = bottleStocks[m.id] || 0;
-                return <SelectItem key={m.id} value={m.id} disabled={stk <= 0}>{m.name} · Stok {stk} {m.unit || 'pcs'}</SelectItem>;
-              })}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={form.bottle_item_id}
+            onValueChange={v => setForm({ ...form, bottle_item_id: v })}
+            options={bottleMaterials.map(m => {
+              const stk = bottleStocks[m.id] || 0;
+              return { value: m.id, label: `${m.name} · Stok ${stk} ${m.unit || 'pcs'}${stk <= 0 ? ' (habis)' : ''}`, keywords: `${m.code || ''} ${m.name}` };
+            })}
+            placeholder="Cari & pilih botol dari stok"
+          />
           {bottleMaterials.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada barang tipe Botol. Tambahkan di Master Barang (Tipe: Botol).</p>}
         </div>
         <div className="grid grid-cols-3 gap-3">

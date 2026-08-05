@@ -29,6 +29,7 @@ export default function Labeling() {
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ stock_id: '', product_id: '', product_name: '', brand_id: '', brand_name: '', batch_id: '', batch_number: '', bottle_size: '', available_qty: '', quantity: '', labeling_date: new Date().toISOString().slice(0, 10), operator: '', notes: '', labels: [] });
+  const [labelSearch, setLabelSearch] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -159,7 +160,18 @@ export default function Labeling() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><Label className="text-[12.5px] mb-1">Produk</Label><Input value={form.product_name} disabled className="h-9 text-[13px] bg-muted/40" /></div>
-          <div><Label className="text-[12.5px] mb-1">Merk</Label><Input value={form.brand_name} disabled className="h-9 text-[13px] bg-muted/40" /></div>
+          <div>
+            <Label className="text-[12.5px] mb-1">Merk (bebas pilih — maklon)</Label>
+            <Select value={form.brand_id} onValueChange={v => {
+              const b = brands.find(x => x.id === v);
+              setForm({ ...form, brand_id: v, brand_name: b?.name || '' });
+            }}>
+              <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih merk hasil labeling" /></SelectTrigger>
+              <SelectContent>
+                {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <div><Label className="text-[12.5px] mb-1">Batch</Label><Input value={form.batch_number} disabled className="h-9 text-[13px] bg-muted/40" /></div>
           <div><Label className="text-[12.5px] mb-1">Stok Tersedia (unit)</Label><Input value={form.available_qty} disabled className="h-9 text-[13px] bg-muted/40" /></div>
           <div><Label className="text-[12.5px] mb-1">Jumlah Dilabeli *</Label><NumberInput value={form.quantity} onChange={v => setForm({ ...form, quantity: v })} allowDecimal={false} min={0} className="h-9 text-[13px]" /></div>
@@ -168,19 +180,27 @@ export default function Labeling() {
         <div>
           <Label className="text-[12.5px] mb-1">Label / Stiker (centang yang dipakai)</Label>
           {form.labels.length === 0 && <p className="text-[11px] text-amber-600">Belum ada barang tipe Label/Stiker. Tambahkan di Master Barang.</p>}
+          <Input value={labelSearch} onChange={e => setLabelSearch(e.target.value)} placeholder="Cari nama/kode label/stiker..." className="h-8 text-[12px] mb-2" />
           <div className="space-y-1.5 max-h-52 overflow-auto border border-border rounded p-2">
-            {form.labels.map((l, idx) => (
-              <div key={l.material_id} className="flex items-center gap-2 border border-border rounded px-2 py-1.5 bg-muted/10">
-                <Checkbox checked={l.checked} onCheckedChange={v => updateLabel(idx, { checked: v })} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12.5px] font-medium truncate">{l.material_name}</div>
-                  <div className="text-[11px] text-muted-foreground">Stok: {l.stock} {l.unit}</div>
+            {form.labels.filter(l => {
+              if (!labelSearch) return true;
+              const q = labelSearch.toLowerCase();
+              return (l.material_name || '').toLowerCase().includes(q) || (l.material_code || '').toLowerCase().includes(q);
+            }).map(l => {
+              const idx = form.labels.findIndex(x => x.material_id === l.material_id);
+              return (
+                <div key={l.material_id} className="flex items-center gap-2 border border-border rounded px-2 py-1.5 bg-muted/10">
+                  <Checkbox checked={l.checked} onCheckedChange={v => updateLabel(idx, { checked: v })} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12.5px] font-medium truncate">{l.material_name}</div>
+                    <div className="text-[11px] text-muted-foreground">Stok: {l.stock} {l.unit}</div>
+                  </div>
+                  <div className="w-24"><NumberInput value={l.quantity_per_unit} onChange={v => updateLabel(idx, { quantity_per_unit: v })} allowDecimal min={0} className="h-8 text-[12px]" disabled={!l.checked} /></div>
+                  <span className="text-[11px] text-muted-foreground">/unit</span>
+                  <span className="text-[11px] tabular-nums w-20 text-right">Butuh: {l.checked ? (Number(form.quantity) || 0) * (Number(l.quantity_per_unit) || 0) : 0}</span>
                 </div>
-                <div className="w-24"><NumberInput value={l.quantity_per_unit} onChange={v => updateLabel(idx, { quantity_per_unit: v })} allowDecimal min={0} className="h-8 text-[12px]" disabled={!l.checked} /></div>
-                <span className="text-[11px] text-muted-foreground">/unit</span>
-                <span className="text-[11px] tabular-nums w-20 text-right">Butuh: {l.checked ? (Number(form.quantity) || 0) * (Number(l.quantity_per_unit) || 0) : 0}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         <div><Label className="text-[12.5px] mb-1">Operator *</Label><Input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} className="h-9 text-[13px]" /></div>
