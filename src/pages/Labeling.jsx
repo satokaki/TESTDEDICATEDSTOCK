@@ -17,6 +17,7 @@ import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/
 import NumberInput from '@/components/NumberInput';
 import PdfButton from '@/components/PdfButton';
 import { exportDocumentToPDF } from '@/lib/pdfExport';
+import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
 
 const emptyLabelLine = () => ({ label_item_id: '', quantity_per_unit: '1' });
 
@@ -31,7 +32,7 @@ export default function Labeling() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ product_id: '', brand_id: '', batch_id: '', bottle_size: 0, quantity: '', operator: '', labeling_date: new Date().toISOString().slice(0, 10), notes: '', labels: [emptyLabelLine()] });
+  const [form, setForm] = useState({ product_id: '', stock_id: '', brand_id: '', batch_id: '', bottle_size: 0, quantity: '', operator: '', labeling_date: new Date().toISOString().slice(0, 10), notes: '', labels: [emptyLabelLine()] });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -45,7 +46,7 @@ export default function Labeling() {
         getAllStockBalances('material'),
       ]);
       setData(items);
-      setSiapLabelingStock(balances.filter(b => b.quantity > 0));
+      setSiapLabelingStock(balances.filter(b => b.inventory_status === 'READY_FOR_LABELING' && b.quantity > 0));
       setProducts(prods);
       setBrands(brs);
       setLabelMaterials(mats.filter(m => m.material_type === 'LABEL' || m.material_type === 'STICKER'));
@@ -59,12 +60,12 @@ export default function Labeling() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const openAdd = () => {
-    setForm({ product_id: '', brand_id: '', batch_id: '', bottle_size: 0, quantity: '', operator: '', labeling_date: new Date().toISOString().slice(0, 10), notes: '', labels: [emptyLabelLine()] });
+    setForm({ product_id: '', stock_id: '', brand_id: '', batch_id: '', bottle_size: 0, quantity: '', operator: '', labeling_date: new Date().toISOString().slice(0, 10), notes: '', labels: [emptyLabelLine()] });
     setModalOpen(true);
   };
 
   const selectedProduct = products.find(p => p.id === form.product_id);
-  const selectedStock = siapLabelingStock.find(s => s.item_id === form.product_id);
+  const selectedStock = siapLabelingStock.find(s => s.id === form.stock_id);
 
   const availableLabels = labelMaterials.filter(m => {
     if ((materialStocks[m.id] || 0) <= 0) return false;
@@ -229,16 +230,16 @@ export default function Labeling() {
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title="Labeling Baru" onSubmit={handleSubmit} submitting={submitting} submitLabel="Proses Labeling" size="lg">
         <div>
           <Label className="text-[12.5px] mb-1">Produk (Siap Labeling) *</Label>
-          <Select value={form.product_id} onValueChange={v => {
-            const stock = siapLabelingStock.find(s => s.item_id === v);
-            const prod = products.find(p => p.id === v);
-            setForm({ ...form, product_id: v, brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size || 0, batch_id: stock?.batch_id || '', labels: [emptyLabelLine()] });
+          <Select value={form.stock_id} onValueChange={v => {
+            const stock = siapLabelingStock.find(s => s.id === v);
+            const prod = products.find(p => p.id === stock?.item_id);
+            setForm({ ...form, stock_id: v, product_id: stock?.item_id || '', brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size || 0, batch_id: stock?.batch_id || '', labels: [emptyLabelLine()] });
           }}>
             <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih produk siap labeling" /></SelectTrigger>
             <SelectContent>
               {siapLabelingStock.map(s => {
                 const p = products.find(p => p.id === s.item_id);
-                return <SelectItem key={s.item_id} value={s.item_id}>{s.item_name} ({s.available_quantity} unit){s.batch_number ? ` · ${s.batch_number}` : ''}</SelectItem>;
+                return <SelectItem key={s.id} value={s.id}>{getInventoryDisplayName(p?.name || s.item_name, 'READY_FOR_LABELING')} ({s.available_quantity} unit){s.batch_number ? ` · ${s.batch_number}` : ''}</SelectItem>;
               })}
             </SelectContent>
           </Select>

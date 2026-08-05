@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, X, CheckCircle } from 'lucide-react';
 import { generateInvoiceNumber } from '@/lib/sequence';
 import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
+import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
 import NumberInput from '@/components/NumberInput';
 import PdfButton from '@/components/PdfButton';
 import { exportDocumentToPDF } from '@/lib/pdfExport';
@@ -41,7 +42,7 @@ export default function Sales() {
       ]);
       setData(items);
       setCustomers(custs);
-      setSiapJualStock(balances.filter(b => b.quantity > 0));
+      setSiapJualStock(balances.filter(b => b.inventory_status === 'READY_FOR_SALE' && b.quantity > 0));
       setProducts(prods);
       setWarehouses(whs);
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
@@ -59,15 +60,15 @@ export default function Sales() {
     setModalOpen(true);
   };
 
-  const addItem = () => setForm(f => ({ ...f, items: [...f.items, { product_id: '', product_name: '', batch_number: '', quantity: 1, unit: 'unit', price: 0, discount: 0 }] }));
-  const updateItem = (idx, field, value) => setForm(f => { const items = [...f.items]; if (field === 'product_id') { const p = products.find(x => x.id === value); const s = siapJualStock.find(x => x.item_id === value); items[idx] = { ...items[idx], product_id: value, product_name: p?.name || '', batch_number: s?.batch_number || '', price: p?.sale_price || 0 }; } else { items[idx] = { ...items[idx], [field]: value }; } return { ...f, items }; });
+  const addItem = () => setForm(f => ({ ...f, items: [...f.items, { stock_id: '', product_id: '', product_name: '', batch_number: '', quantity: 1, unit: 'unit', price: 0, discount: 0 }] }));
+  const updateItem = (idx, field, value) => setForm(f => { const items = [...f.items]; if (field === 'stock_id') { const s = siapJualStock.find(x => x.id === value); const p = products.find(x => x.id === s?.item_id); items[idx] = { ...items[idx], stock_id: value, product_id: s?.item_id || '', product_name: p?.name || '', batch_number: s?.batch_number || '', price: p?.sale_price || 0 }; } else { items[idx] = { ...items[idx], [field]: value }; } return { ...f, items }; });
   const removeItem = (idx) => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
 
   const handleSubmit = async () => {
     if (!form.customer_id || form.items.length === 0) { toast({ variant: 'destructive', title: 'Customer dan item wajib diisi' }); return; }
     // Check stock
     for (const item of form.items) {
-      const stock = siapJualStock.find(s => s.item_id === item.product_id);
+      const stock = siapJualStock.find(s => s.id === item.stock_id);
       if (stock && Number(item.quantity) > stock.available_quantity) {
         toast({ variant: 'destructive', title: `Stok ${item.product_name} tidak mencukupi`, description: `Tersedia: ${stock.available_quantity}` });
         return;
@@ -105,7 +106,7 @@ export default function Sales() {
       })));
       // Reduce stock for each item
       for (const item of form.items) {
-        const stock = siapJualStock.find(s => s.item_id === item.product_id);
+        const stock = siapJualStock.find(s => s.id === item.stock_id);
         const prod = products.find(p => p.id === item.product_id);
         await recordStockMovement({
           item_type: 'product', item_id: item.product_id, item_name: item.product_name, item_code: prod?.code || '',
@@ -238,10 +239,10 @@ export default function Sales() {
                 {form.items.map((item, idx) => (
                   <tr key={idx} className="border-b border-border/30">
                     <td className="px-2 py-1">
-                      <Select value={item.product_id} onValueChange={v => updateItem(idx, 'product_id', v)}>
+                      <Select value={item.stock_id} onValueChange={v => updateItem(idx, 'stock_id', v)}>
                         <SelectTrigger className="h-7 text-[11.5px]"><SelectValue placeholder="Pilih produk" /></SelectTrigger>
                         <SelectContent>
-                          {siapJualStock.map(s => { const p = products.find(p => p.id === s.item_id); return <SelectItem key={s.item_id} value={s.item_id}>{s.item_name} ({s.available_quantity})</SelectItem>; })}
+                          {siapJualStock.map(s => { const p = products.find(p => p.id === s.item_id); return <SelectItem key={s.id} value={s.id}>{getInventoryDisplayName(p?.name || s.item_name, 'READY_FOR_SALE')} ({s.available_quantity})</SelectItem>; })}
                         </SelectContent>
                       </Select>
                     </td>

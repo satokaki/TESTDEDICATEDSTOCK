@@ -11,6 +11,7 @@ import { Download, Search } from 'lucide-react';
 import PdfButton from '@/components/PdfButton';
 import { exportReportToPDF } from '@/lib/pdfExport';
 import { useAuth } from '@/lib/AuthContext';
+import { STAGE_LABEL } from '@/lib/inventoryDisplay';
 
 const transactionTypeLabels = {
   opening_balance: 'Opening Balance',
@@ -18,8 +19,10 @@ const transactionTypeLabels = {
   production_consumption: 'Production Consumption',
   production_output: 'Production Output',
   bottling_consumption: 'Bottling Consumption',
+  bottling_bottle_consumption: 'Bottle Consumption',
   bottling_output: 'Bottling Output',
   labeling_consumption: 'Labeling Consumption',
+  label_consumption: 'Label Consumption',
   labeling_output: 'Labeling Output',
   excise_consumption: 'Excise Consumption',
   excise_output: 'Excise Output',
@@ -36,7 +39,7 @@ export default function StockCard() {
   const { user } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ item_type: '', transaction_type: '', item_name: '', date_from: '', date_to: '' });
+  const [filters, setFilters] = useState({ item_type: '', transaction_type: '', inventory_status: '', item_name: '', date_from: '', date_to: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -52,6 +55,7 @@ export default function StockCard() {
   const filtered = data.filter(item => {
     if (filters.item_type && item.item_type !== filters.item_type) return false;
     if (filters.transaction_type && item.transaction_type !== filters.transaction_type) return false;
+    if (filters.inventory_status && item.inventory_status !== filters.inventory_status) return false;
     if (filters.item_name && !item.item_name?.toLowerCase().includes(filters.item_name.toLowerCase())) return false;
     if (filters.date_from && item.transaction_date?.slice(0, 10) < filters.date_from) return false;
     if (filters.date_to && item.transaction_date?.slice(0, 10) > filters.date_to) return false;
@@ -105,6 +109,7 @@ export default function StockCard() {
     { key: 'transaction_number', header: 'No. Transaksi', className: 'font-mono' },
     { key: 'transaction_type', header: 'Tipe', render: (row) => <span className="text-[10.5px] px-1.5 py-0.5 bg-muted rounded">{transactionTypeLabels[row.transaction_type] || row.transaction_type}</span> },
     { key: 'item_name', header: 'Item', className: 'font-medium' },
+    { key: 'inventory_status', header: 'Stage', render: (row) => row.inventory_status ? <span className="text-[10.5px] px-1.5 py-0.5 bg-muted rounded">{STAGE_LABEL[row.inventory_status] || row.inventory_status}</span> : '—' },
     { key: 'batch_number', header: 'Batch', className: 'font-mono', render: (row) => row.batch_number || '—' },
     { key: 'quantity_in', header: 'Masuk', render: (row) => row.quantity_in > 0 ? <span className="text-emerald-600 tabular-nums">+{row.quantity_in}</span> : '' },
     { key: 'quantity_out', header: 'Keluar', render: (row) => row.quantity_out > 0 ? <span className="text-red-600 tabular-nums">-{row.quantity_out}</span> : '' },
@@ -118,7 +123,7 @@ export default function StockCard() {
         actions={<div className="flex items-center gap-2"><Button onClick={exportCSV} size="sm" variant="outline" className="gap-1.5"><Download className="w-4 h-4" /> Export CSV</Button><PdfButton onExport={exportPDF} /></div>} />
 
       {/* Filters */}
-      <div className="bg-white border border-border rounded-lg p-3 mb-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      <div className="bg-white border border-border rounded-lg p-3 mb-3 grid grid-cols-2 sm:grid-cols-5 gap-2.5">
         <div>
           <Label className="text-[11px] mb-1">Jenis Item</Label>
           <Select value={filters.item_type} onValueChange={v => setFilters({ ...filters, item_type: v })}>
@@ -135,6 +140,18 @@ export default function StockCard() {
             <SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder="Semua" /></SelectTrigger>
             <SelectContent>
               {Object.entries(transactionTypeLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-[11px] mb-1">Stage</Label>
+          <Select value={filters.inventory_status} onValueChange={v => setFilters({ ...filters, inventory_status: v })}>
+            <SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder="Semua" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="BULK">Bulk (Produksi)</SelectItem>
+              <SelectItem value="READY_FOR_LABELING">Siap Labeling</SelectItem>
+              <SelectItem value="UNEXCISED">Belum Cukai</SelectItem>
+              <SelectItem value="READY_FOR_SALE">Siap Jual</SelectItem>
             </SelectContent>
           </Select>
         </div>

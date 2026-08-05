@@ -16,6 +16,7 @@ import { exportDocumentToPDF } from '@/lib/pdfExport';
 import { Plus } from 'lucide-react';
 import { generateOrderNumber } from '@/lib/sequence';
 import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
+import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
 
 export default function Excise() {
   const { toast } = useToast();
@@ -26,7 +27,7 @@ export default function Excise() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ product_id: '', brand_id: '', bottle_size: '', quantity: '', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+  const [form, setForm] = useState({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -39,7 +40,7 @@ export default function Excise() {
       ]);
       setData(items);
       // belum_cukai stock = stock balances that have belum_cukai products
-      setBelumCukaiStock(balances.filter(b => b.quantity > 0));
+      setBelumCukaiStock(balances.filter(b => b.inventory_status === 'UNEXCISED' && b.quantity > 0));
       setProducts(prods);
       setBrands(brs);
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
@@ -49,13 +50,13 @@ export default function Excise() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const openAdd = () => {
-    setForm({ product_id: '', brand_id: '', bottle_size: '', quantity: '', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
+    setForm({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '' });
     setModalOpen(true);
   };
 
   const handleSubmit = async () => {
     if (!form.product_id || !form.quantity || !form.operator) { toast({ variant: 'destructive', title: 'Produk, jumlah, dan operator wajib diisi' }); return; }
-    const stockItem = belumCukaiStock.find(s => s.item_id === form.product_id);
+    const stockItem = belumCukaiStock.find(s => s.id === form.stock_id);
     if (stockItem && Number(form.quantity) > stockItem.available_quantity) {
       toast({ variant: 'destructive', title: 'Jumlah melebihi stok belum cukai', description: `Tersedia: ${stockItem.available_quantity}` });
       return;
@@ -151,16 +152,16 @@ export default function Excise() {
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title="Proses Cukai Baru" onSubmit={handleSubmit} submitting={submitting} submitLabel="Proses Cukai">
         <div>
           <Label className="text-[12.5px] mb-1">Produk (Belum Cukai) *</Label>
-          <Select value={form.product_id} onValueChange={v => {
-            const stock = belumCukaiStock.find(s => s.item_id === v);
-            const prod = products.find(p => p.id === v);
-            setForm({ ...form, product_id: v, brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size ?? '' });
+          <Select value={form.stock_id} onValueChange={v => {
+            const stock = belumCukaiStock.find(s => s.id === v);
+            const prod = products.find(p => p.id === stock?.item_id);
+            setForm({ ...form, stock_id: v, product_id: stock?.item_id || '', brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size ?? '' });
           }}>
             <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih produk belum cukai" /></SelectTrigger>
             <SelectContent>
               {belumCukaiStock.map(s => {
                 const p = products.find(p => p.id === s.item_id);
-                return <SelectItem key={s.item_id} value={s.item_id}>{s.item_name} ({s.available_quantity} unit){s.batch_number ? ` · ${s.batch_number}` : ''}</SelectItem>;
+                return <SelectItem key={s.id} value={s.id}>{getInventoryDisplayName(p?.name || s.item_name, 'UNEXCISED')} ({s.available_quantity} unit){s.batch_number ? ` · ${s.batch_number}` : ''}</SelectItem>;
               })}
             </SelectContent>
           </Select>
