@@ -28,16 +28,16 @@ const itemTypes = [
 ];
 const itLabel = (v) => itemTypes.find(t => t.value === v)?.label || v;
 
-// Semua item pembelian adalah Material. Jenis (item_type) menentukan material_type
-// apa yang ditampilkan di picker — produk jadi tidak pernah dibeli.
-const MATERIAL_TYPES_BY_ITEM_TYPE = {
-  material: ['RAW_MATERIAL', 'PREMIX'],
-  packaging: ['PACKAGING', 'BOTTLE'],
-  label: ['LABEL', 'STICKER'],
-  excise_material: ['EXCISE'],
-  consumable: ['CONSUMABLE'],
-  supporting_item: null, // semua material
+// item_type diturunkan otomatis dari material_type barang yang dipilih.
+const ITEM_TYPE_BY_MATERIAL_TYPE = {
+  RAW_MATERIAL: 'material', PREMIX: 'material',
+  PACKAGING: 'packaging', BOTTLE: 'packaging',
+  LABEL: 'label', STICKER: 'label',
+  EXCISE: 'excise_material',
+  CONSUMABLE: 'consumable',
+  FINISHED_GOOD: 'supporting_item',
 };
+const deriveItemType = (material_type) => ITEM_TYPE_BY_MATERIAL_TYPE[material_type] || 'supporting_item';
 
 const UNIT_OPTIONS = [
   { value: 'GRAM', label: 'Gram' },
@@ -106,11 +106,7 @@ export default function Purchases() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const getMaster = (itemType, id) => materials.find(m => m.id === id);
-  const itemOptionsFor = (itemType) => {
-    const types = MATERIAL_TYPES_BY_ITEM_TYPE[itemType];
-    return types ? materials.filter(m => types.includes(m.material_type)) : materials;
-  };
+  const getMaster = (id) => materials.find(m => m.id === id);
 
   const computeSubtotal = (it) => {
     const qty = toNum(it.quantity) || 0;
@@ -229,8 +225,9 @@ export default function Purchases() {
     });
   };
 
-  const onSelectItem = (idx, itemType, id) => {
-    const master = getMaster(itemType, id);
+  const onSelectItem = (idx, id) => {
+    const master = getMaster(id);
+    const itemType = deriveItemType(master?.material_type);
     const snap = snapshotItem(itemType, master);
     const unit = itemType === 'material' ? 'GRAM' : 'PCS';
     updateItem(idx, { item_type: itemType, item_id: id, ...snap, unit, ...unitProps(unit) });
@@ -546,19 +543,12 @@ export default function Purchases() {
                 </div>
                 <div className="space-y-2">
                   <div>
-                    <Label className="text-[11.5px] mb-1">Jenis</Label>
-                    <Select value={it.item_type} onValueChange={v => { const m = getMaster(v, it.item_id); updateItem(idx, { item_type: v, item_id: '', ...snapshotItem(v, m) }); }}>
-                      <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue placeholder="Pilih jenis" /></SelectTrigger>
-                      <SelectContent>{itemTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-[11.5px] mb-1">Item</Label>
+                    <Label className="text-[11.5px] mb-1">Item (cari nama / kode / kategori)</Label>
                     <SearchableSelect
                       value={it.item_id}
-                      onValueChange={v => onSelectItem(idx, it.item_type || 'material', v)}
-                      placeholder={it.item_type === 'material' ? 'Pilih bahan' : 'Pilih barang'}
-                      options={itemOptionsFor(it.item_type).map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''}` }))}
+                      onValueChange={v => onSelectItem(idx, v)}
+                      placeholder="Pilih barang / bahan"
+                      options={materials.map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''} ${o.material_type || ''}` }))}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -586,37 +576,30 @@ export default function Purchases() {
           {/* Desktop item table */}
           <div className="hidden md:block border border-border rounded-lg overflow-x-auto">
             <table className="w-full text-[12px]">
-              <thead className="bg-muted/40 text-muted-foreground">
-                <tr>
-                  <th className="px-2 py-1.5 text-left font-semibold">Jenis</th>
-                  <th className="px-2 py-1.5 text-left font-semibold">Item</th>
-                  <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
-                  <th className="px-2 py-1.5 text-left font-semibold">Unit</th>
-                  <th className="px-2 py-1.5 text-right font-semibold">Qty Dasar</th>
-                  <th className="px-2 py-1.5 text-right font-semibold">Harga</th>
-                  <th className="px-2 py-1.5 text-right font-semibold">Diskon</th>
-                  <th className="px-2 py-1.5 text-right font-semibold">Subtotal</th>
-                  <th className="px-2 py-1.5 text-center font-semibold w-16">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {form.items.map((it, idx) => (
-                  <tr key={idx} className="border-t border-border/50 align-top">
-                    <td className="px-1 py-1">
-                      <Select value={it.item_type} onValueChange={v => { const m = getMaster(v, it.item_id); updateItem(idx, { item_type: v, item_id: '', ...snapshotItem(v, m) }); }}>
-                        <SelectTrigger className="h-8 w-32 text-[11.5px]"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                        <SelectContent>{itemTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-1 py-1 min-w-[180px]">
-                      <SearchableSelect
-                        value={it.item_id}
-                        onValueChange={v => onSelectItem(idx, it.item_type || 'material', v)}
-                        placeholder={it.item_type === 'material' ? 'Pilih bahan' : 'Pilih barang'}
-                        options={itemOptionsFor(it.item_type).map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''}` }))}
-                        className="h-8 text-[11.5px]"
-                      />
-                    </td>
+            <thead className="bg-muted/40 text-muted-foreground">
+              <tr>
+                <th className="px-2 py-1.5 text-left font-semibold">Item</th>
+                <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
+                <th className="px-2 py-1.5 text-left font-semibold">Unit</th>
+                <th className="px-2 py-1.5 text-right font-semibold">Qty Dasar</th>
+                <th className="px-2 py-1.5 text-right font-semibold">Harga</th>
+                <th className="px-2 py-1.5 text-right font-semibold">Diskon</th>
+                <th className="px-2 py-1.5 text-right font-semibold">Subtotal</th>
+                <th className="px-2 py-1.5 text-center font-semibold w-16">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {form.items.map((it, idx) => (
+                <tr key={idx} className="border-t border-border/50 align-top">
+                  <td className="px-1 py-1 min-w-[200px]">
+                    <SearchableSelect
+                      value={it.item_id}
+                      onValueChange={v => onSelectItem(idx, v)}
+                      placeholder="Pilih barang / bahan"
+                      options={materials.map(o => ({ value: o.id, label: o.name, keywords: `${o.code || ''} ${o.category_name || ''} ${o.material_type || ''}` }))}
+                      className="h-8 text-[11.5px]"
+                    />
+                  </td>
                     <td className="px-1 py-1"><NumberInput value={it.quantity} onChange={v => updateItem(idx, { quantity: v })} allowDecimal min={0} className="h-8 w-16 text-right text-[11.5px]" /></td>
                     <td className="px-1 py-1">
                       <Select value={it.unit} onValueChange={v => onUnitChange(idx, v)}>
