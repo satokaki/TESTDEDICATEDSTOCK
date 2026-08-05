@@ -98,7 +98,7 @@ export default function Layout() {
               <FlaskConical className="w-4 h-4 text-primary-foreground" />
             </div>
             <div>
-              <div className="font-heading font-bold text-[15px] leading-none tracking-tight">LAB PRO</div>
+              <div className="font-heading font-bold text-[15px] leading-none tracking-tight">IZZI JUICE</div>
               <div className="text-[10px] text-muted-foreground mt-0.5">E-Liquid Management</div>
             </div>
           </div>
