@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import {
   LayoutDashboard, FlaskConical, Factory, Package, Tag, Stamp,
   ShoppingCart, Wallet, ClipboardList, FileBarChart, Database,
-  Settings, ChevronDown, Menu, X, LogOut, Bell, Search, UserCog, Calculator, Bot, Boxes, TrendingUp
+  Settings, ChevronDown, Menu, X, LogOut, Bell, Search, Calculator, Bot, Boxes, TrendingUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import FloatingAssistant from '@/components/FloatingAssistant';
@@ -159,19 +159,6 @@ export default function Layout() {
           )}
 
           <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Sistem</div>
-          {canSee('users') && (
-            <Link
-              to="/users"
-              onClick={() => setSidebarOpen(false)}
-              className={cn(
-                'flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors',
-                isActive('/users') ? 'bg-primary text-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent'
-              )}
-            >
-              <UserCog className="w-4 h-4 shrink-0" />
-              <span>Pengguna & Akses</span>
-            </Link>
-          )}
           {canSee('database') && (
             <Link
               to="/database"
