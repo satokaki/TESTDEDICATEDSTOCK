@@ -17,7 +17,7 @@ import { generateMaterialCode, generatePremixMaterialCode } from '@/lib/sequence
 const materialTypes = [
   { value: 'RAW_MATERIAL', label: 'Bahan Baku' },
   { value: 'PREMIX', label: 'Premix' },
-  { value: 'PACKAGING', label: 'Kemasan' },
+  { value: 'PACKAGING', label: 'Box / Kemasan Luar' },
   { value: 'BOTTLE', label: 'Botol' },
   { value: 'LABEL', label: 'Label' },
   { value: 'STICKER', label: 'Stiker' },

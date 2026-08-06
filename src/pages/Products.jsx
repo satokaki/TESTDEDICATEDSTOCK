@@ -29,6 +29,10 @@ const productTypes = [
   { value: 'barang_pendukung', label: 'Barang Pendukung' },
 ];
 const ptLabel = (v) => productTypes.find(t => t.value === v)?.label || v;
+// Tipe yang merupakan bahan penentu HPP — dikelola di Master Bahan, bukan Master Barang.
+// Dikecualikan dari dropdown Tipe Barang agar operator tidak keliru mendaftarkan botol/kemasan di sini.
+const PRODUCT_TYPE_EXCLUDED = ['bahan_baku', 'kemasan', 'botol_kosong', 'label'];
+const productTypeOptions = productTypes.filter(t => !PRODUCT_TYPE_EXCLUDED.includes(t.value));
 
 const units = [
   { value: 'kg', label: 'Kg' },
@@ -163,7 +167,7 @@ export default function Products() {
             <Label className="text-[12.5px] mb-1">Tipe Barang</Label>
             <Select value={form.product_type} onValueChange={v => setForm({ ...form, product_type: v })}>
               <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
-              <SelectContent>{productTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{productTypeOptions.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div><Label className="text-[12.5px] mb-1">SKU</Label><Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} className="h-9 text-[13px]" /></div>
