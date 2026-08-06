@@ -48,10 +48,44 @@ export default function FloatingAssistant() {
   const [sending, setSending] = useState(false);
   const scrollRef = useRef(null);
   const bubbleTimer = useRef(null);
+  const [pos, setPos] = useState(null);
+  const dragRef = useRef({ active: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0 });
+  const btnRef = useRef(null);
 
   useEffect(() => {
     bubbleTimer.current = setTimeout(() => setShowBubble(true), 1500);
     return () => clearTimeout(bubbleTimer.current);
+  }, []);
+
+  const onPointerDown = (e) => {
+    const btn = btnRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    dragRef.current = { active: true, moved: false, startX: e.clientX, startY: e.clientY, originX: rect.left, originY: rect.top };
+    btn.setPointerCapture?.(e.pointerId);
+  };
+
+  useEffect(() => {
+    const onMove = (e) => {
+      const d = dragRef.current;
+      if (!d.active) return;
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      if (!d.moved && Math.hypot(dx, dy) > 6) d.moved = true;
+      if (d.moved) {
+        const size = 56;
+        const x = Math.min(Math.max(8, d.originX + dx), window.innerWidth - size - 8);
+        const y = Math.min(Math.max(8, d.originY + dy), window.innerHeight - size - 8);
+        setPos({ x, y });
+      }
+    };
+    const onUp = () => { dragRef.current.active = false; };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
   }, []);
 
   useEffect(() => {
@@ -97,7 +131,7 @@ export default function FloatingAssistant() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 print:hidden">
+    <div className="fixed z-50 print:hidden" style={pos ? { left: pos.x, top: pos.y } : { right: '1rem', bottom: '1rem' }}>
       {/* Mini chat panel */}
       {open && (
         <div className="absolute bottom-16 right-0 w-[calc(100vw-2rem)] sm:w-[380px] h-[min(560px,calc(100vh-7rem))] bg-white border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in">
@@ -180,9 +214,11 @@ export default function FloatingAssistant() {
 
       {/* Floating button */}
       <button
-        onClick={toggleOpen}
+        ref={btnRef}
+        onPointerDown={onPointerDown}
+        onClick={() => { if (!dragRef.current.moved) toggleOpen(); }}
         className={cn(
-          'w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-200 hover:scale-105',
+          'w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-200 hover:scale-105 touch-none select-none cursor-grab active:cursor-grabbing',
           open ? 'bg-muted text-foreground border border-border' : 'bg-primary text-primary-foreground'
         )}
         aria-label="Asisten AI"

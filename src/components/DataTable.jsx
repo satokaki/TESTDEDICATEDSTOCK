@@ -17,6 +17,7 @@ export default function DataTable({
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(pageSize);
 
   const filtered = useMemo(() => {
     let result = [...data];
@@ -44,8 +45,8 @@ export default function DataTable({
     return result;
   }, [data, search, searchKeys, sortKey, sortDir]);
 
-  const pageCount = Math.ceil(filtered.length / pageSize);
-  const currentData = filtered.slice(page * pageSize, page * pageSize + pageSize);
+  const pageCount = Math.ceil(filtered.length / rowsPerPage);
+  const currentData = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   const handleSort = (key) => {
     if (sortKey === key) {
@@ -141,28 +142,43 @@ export default function DataTable({
         </table>
       </div>
 
-      {pageCount > 1 && (
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border bg-muted/30 text-[12px]">
-          <div className="text-muted-foreground">
-            Menampilkan {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filtered.length)} dari {filtered.length}
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage(Math.max(0, page - 1))}
-              disabled={page === 0}
-              className="px-2.5 py-1 border border-border rounded hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+      {filtered.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-t border-border bg-muted/30 text-[12px]">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Tampil</span>
+            <select
+              value={rowsPerPage}
+              onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
+              className="h-7 px-1.5 border border-border rounded bg-white text-[12px] outline-none focus:ring-1 focus:ring-ring cursor-pointer"
             >
-              Sebelumnya
-            </button>
-            <span className="px-2.5 text-muted-foreground">Hal {page + 1}/{pageCount}</span>
-            <button
-              onClick={() => setPage(Math.min(pageCount - 1, page + 1))}
-              disabled={page >= pageCount - 1}
-              className="px-2.5 py-1 border border-border rounded hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Berikutnya
-            </button>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span className="text-muted-foreground hidden sm:inline">
+              {page * rowsPerPage + 1}–{Math.min((page + 1) * rowsPerPage, filtered.length)} dari {filtered.length}
+            </span>
           </div>
+          {pageCount > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(Math.max(0, page - 1))}
+                disabled={page === 0}
+                className="px-2.5 py-1 border border-border rounded hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Sebelumnya
+              </button>
+              <span className="px-2.5 text-muted-foreground">Hal {page + 1}/{pageCount}</span>
+              <button
+                onClick={() => setPage(Math.min(pageCount - 1, page + 1))}
+                disabled={page >= pageCount - 1}
+                className="px-2.5 py-1 border border-border rounded hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Berikutnya
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
