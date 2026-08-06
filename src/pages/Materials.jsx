@@ -73,6 +73,7 @@ export default function Materials() {
   const [categories, setCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterCategory, setFilterCategory] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -208,7 +209,22 @@ export default function Materials() {
       <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
         <span className="font-semibold">Aturan:</span> daftarkan di sini semua bahan yang ikut menghitung HPP produksi (essence, nicotine, PG, VG, premix, botol, label, stiker, pita cukai). Master Barang khusus untuk <span className="font-semibold">produk jadi</span> (barang siap jual / hasil akhir).
       </div>
-      <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada bahan" searchKeys={['code', 'name']} searchPlaceholder="Cari bahan..." />
+      <div className="mb-3 flex items-center gap-2">
+        <Label className="text-[12.5px] text-muted-foreground shrink-0">Filter Kategori</Label>
+        <Select value={filterCategory} onValueChange={setFilterCategory}>
+          <SelectTrigger className="h-8 w-[220px] text-[12.5px]"><SelectValue placeholder="Semua Kategori" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all">Semua Kategori</SelectItem>
+            {[...new Set(data.map(d => d.category_name).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(c => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {filterCategory && filterCategory !== '__all' && (
+          <button onClick={() => setFilterCategory('')} className="text-[11px] text-primary hover:underline">Reset</button>
+        )}
+      </div>
+      <DataTable columns={columns} data={filterCategory && filterCategory !== '__all' ? data.filter(d => d.category_name === filterCategory) : data} loading={loading} emptyMessage="Belum ada bahan" searchKeys={['code', 'name']} searchPlaceholder="Cari bahan..." />
       <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Bahan' : 'Tambah Bahan'} onSubmit={handleSubmit} submitting={submitting} size="lg">
         <div className="grid grid-cols-2 gap-3">
           <div><Label className="text-[12.5px] mb-1">Kode</Label><Input value={editing ? form.code : ''} placeholder="Otomatis" className="h-9 text-[13px] font-mono bg-muted/40" disabled readOnly /></div>
