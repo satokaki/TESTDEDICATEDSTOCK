@@ -20,10 +20,8 @@ const materialTypes = [
   { value: 'PACKAGING', label: 'Box / Kemasan Luar' },
   { value: 'BOTTLE', label: 'Botol' },
   { value: 'LABEL', label: 'Label' },
-  { value: 'STICKER', label: 'Stiker' },
   { value: 'EXCISE', label: 'Pita Cukai' },
   { value: 'CONSUMABLE', label: 'Consumable' },
-  { value: 'FINISHED_GOOD', label: 'Produk Jadi' },
 ];
 const mtLabel = (v) => materialTypes.find(t => t.value === v)?.label || v;
 const concentrationUnits = [
