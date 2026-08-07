@@ -100,8 +100,20 @@ export default function Labeling() {
         label_quantity_per_unit: Number(def.quantity_per_unit) || 1, label_total_required: Number(form.quantity) * (Number(def.quantity_per_unit) || 1),
         labeling_date: form.labeling_date, operator: form.operator, status: 'belum_cukai', notes: form.notes,
       });
+      // PATCH C3: Ambil HPP Bottling per botol dari StockLedger snapshot (hasil Patch C2)
+      const bottlingLedgers = await base44.entities.StockLedger.filter({
+        batch_id: form.batch_id, item_id: form.product_id, inventory_status: 'READY_FOR_LABELING', transaction_type: 'bottling_output',
+      });
+      const hppBottlingPerBottle = Number(bottlingLedgers[0]?.unit_cost) || 0;
+      // PATCH C3: Hitung cost basis Labeling
+      const quantityProcessed = Number(form.quantity);
+      const previousProductCost = quantityProcessed * hppBottlingPerBottle;
+      let totalLabelCost = 0;
       for (const l of used) {
         const totalReq = Number(form.quantity) * (Number(l.quantity_per_unit) || 1);
+        const labelMat = labelMaterials.find(m => m.id === l.material_id);
+        const labelHbt = Number(labelMat?.last_purchase_price) || 0;
+        totalLabelCost += totalReq * labelHbt;
         await base44.entities.LabelingMaterial.create({
           labeling_id: order.id, labeling_number: lblNumber,
           label_item_id: l.material_id, label_item_code: l.material_code, label_item_name: l.material_name,
@@ -110,21 +122,26 @@ export default function Labeling() {
         });
         await recordStockMovement({
           item_type: 'material', item_id: l.material_id, item_name: l.material_name, item_code: l.material_code,
-          inventory_status: '', quantity_out: totalReq, unit: l.unit,
+          inventory_status: '', quantity_out: totalReq, unit: l.unit, unit_cost: labelHbt,
           transaction_type: 'label_consumption', transaction_number: lblNumber,
           reference_type: 'labeling', reference_id: order.id, notes: `Label untuk ${lblNumber}`,
         });
       }
+      const totalLabelingCost = previousProductCost + totalLabelCost;
+      const hppLabelingPerBottle = quantityProcessed > 0 ? totalLabelingCost / quantityProcessed : 0;
+      const safeHppLabeling = Number.isFinite(hppLabelingPerBottle) ? hppLabelingPerBottle : 0;
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || form.product_name, item_code: product?.code || '',
         batch_id: form.batch_id, batch_number: form.batch_number, inventory_status: 'READY_FOR_LABELING',
-        quantity_out: Number(form.quantity), unit: 'unit', transaction_type: 'labeling_consumption', transaction_number: lblNumber,
+        quantity_out: Number(form.quantity), unit: 'unit', unit_cost: hppBottlingPerBottle,
+        transaction_type: 'labeling_consumption', transaction_number: lblNumber,
         reference_type: 'labeling', reference_id: order.id, notes: `Labeling ${lblNumber}`,
       });
       await recordStockMovement({
         item_type: 'product', item_id: form.product_id, item_name: product?.name || form.product_name, item_code: product?.code || '',
         batch_id: form.batch_id, batch_number: form.batch_number, inventory_status: 'UNEXCISED',
-        quantity_in: Number(form.quantity), unit: 'unit', transaction_type: 'labeling_output', transaction_number: lblNumber,
+        quantity_in: Number(form.quantity), unit: 'unit', unit_cost: safeHppLabeling,
+        transaction_type: 'labeling_output', transaction_number: lblNumber,
         reference_type: 'labeling', reference_id: order.id, notes: `Output labeling ${lblNumber}`,
       });
       await createAuditLog({ module: 'Labeling', action: 'Selesai', entity_type: 'LabelingOrder', entity_id: order.id, reference_number: lblNumber });
