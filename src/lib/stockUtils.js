@@ -10,6 +10,7 @@ export async function recordStockMovement({
   warehouse_id = '', warehouse_name = '',
   inventory_status = '',
   quantity_in = 0, quantity_out = 0, unit,
+  unit_cost = 0,
   transaction_type, transaction_number,
   reference_type = '', reference_id = '',
   notes = '',
