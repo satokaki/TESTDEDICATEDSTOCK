@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { loadInventoryCostContext, resolveBalanceUnitCost } from '@/lib/inventoryCost';
 import { formatCurrency as fmtMoney } from '@/lib/format';
+import { useAuth } from '@/lib/AuthContext';
 
 function KpiCard({ icon: Icon, label, value, color, onClick }) {
   return (
@@ -44,6 +45,7 @@ function QuickAction({ icon: Icon, label, path, color }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const [stats, setStats] = useState({
     activeMaterials: 0,
     lowStockMaterials: 0,
@@ -64,11 +66,16 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDashboard();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, currentUser?.role]);
 
   const loadDashboard = async () => {
     setLoading(true);
     try {
+      const isAdmin = currentUser?.role === 'admin';
+      const auditQuery = isAdmin
+        ? base44.entities.AuditLog.list('-created_date', 10)
+        : base44.entities.AuditLog.filter({ created_by_id: currentUser?.id }, '-created_date', 10);
       const [materials, productions, bottling, labeling, excise, products, sales, audit, balances, costCtx] = await Promise.all([
         base44.entities.Material.list(),
         base44.entities.ProductionOrder.list(),
@@ -77,7 +84,7 @@ export default function Dashboard() {
         base44.entities.ExciseOrder.list(),
         base44.entities.Product.list(),
         base44.entities.Sale.list('-created_date', 50),
-        base44.entities.AuditLog.list('-created_date', 10),
+        auditQuery.catch(() => []),
         base44.entities.StockBalance.list('-updated_date', 1000).catch(() => []),
         loadInventoryCostContext().catch(() => null),
       ]);
@@ -177,7 +184,7 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : recentActivity.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-[13px]">Belum ada aktivitas</div>
+              <div className="text-center py-8 text-muted-foreground text-[13px]">Belum ada aktivitas terbaru</div>
             ) : (
               <div className="space-y-1.5">
                 {recentActivity.map(log => (
