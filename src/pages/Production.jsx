@@ -1177,41 +1177,20 @@ export default function Production() {
 
 
         await recordStockMovement({
-
-          item_type:
-            'material',
-
-          item_id:
-            m.material_id,
-
-          item_name:
-            m.material_name,
-
-          item_code:
-            mat?.code || '',
-
-          quantity_out:
-            actual,
-
-          unit:
-            'gram',
-
-          transaction_type:
-            consumeType,
-
-          transaction_number:
-            editing.production_number,
-
-          reference_type:
-            'production',
-
-          reference_id:
-            editing.id,
-
-          notes:
-            isPremixProduction
-              ? `Produksi premix ${editing.batch_number}`
-              : `Produksi ${editing.batch_number}`
+          item_type: 'material',
+          item_id: m.material_id,
+          item_name: m.material_name,
+          item_code: mat?.code || '',
+          quantity_out: actual,
+          unit: 'gram',
+          unit_cost: Number(mat?.last_purchase_price || 0),
+          transaction_type: consumeType,
+          transaction_number: editing.production_number,
+          reference_type: 'production',
+          reference_id: editing.id,
+          notes: isPremixProduction
+            ? `Produksi premix ${editing.batch_number}`
+            : `Produksi ${editing.batch_number}`
         });
       }
 
@@ -1290,50 +1269,21 @@ export default function Production() {
 
 
         await recordStockMovement({
-
-          item_type:
-            'material',
-
-          item_id:
-            editing.output_material_id,
-
-          item_name:
-            outputMat?.name ||
-            editing.output_material_name ||
-            '',
-
-          item_code:
-            outputMat?.code || '',
-
-          batch_id:
-            editing.id,
-
-          batch_number:
-            editing.batch_number,
-
-          inventory_status:
-            'PREMIX',
-
-          quantity_in:
-            outputQty,
-
-          unit:
-            outputUnit,
-
-          transaction_type:
-            'premix_output',
-
-          transaction_number:
-            editing.production_number,
-
-          reference_type:
-            'production',
-
-          reference_id:
-            editing.id,
-
-          notes:
-            `Hasil premix ${editing.batch_number}`
+          item_type: 'material',
+          item_id: editing.output_material_id,
+          item_name: outputMat?.name || editing.output_material_name || '',
+          item_code: outputMat?.code || '',
+          batch_id: editing.id,
+          batch_number: editing.batch_number,
+          inventory_status: 'PREMIX',
+          quantity_in: outputQty,
+          unit: outputUnit,
+          unit_cost: Number(hppPerUnit || 0),
+          transaction_type: 'premix_output',
+          transaction_number: editing.production_number,
+          reference_type: 'production',
+          reference_id: editing.id,
+          notes: `Hasil premix ${editing.batch_number}`
         });
 
 
@@ -1405,59 +1355,32 @@ export default function Production() {
 
       else {
 
-        const actualVolume =
-          (
-            totalActualGram /
-            1.18
-          ).toFixed(0);
+        const actualVolume = (totalActualGram / 1.18).toFixed(0);
 
+        const totalInputCost = mats.reduce((sum, m) => {
+          const mat = materials.find(x => x.id === m.material_id);
+          return sum + (Number(m.required_gram || 0) * Number(mat?.last_purchase_price || 0));
+        }, 0);
+
+        const actualOutputMl = Number(actualVolume) || 0;
+        const hppBulkPerMl = actualOutputMl > 0 ? totalInputCost / actualOutputMl : 0;
 
         await recordStockMovement({
-
-          item_type:
-            'product',
-
-          item_id:
-            editing.product_id ||
-            editing.recipe_id,
-
-          item_name:
-            `Bulk ${editing.product_name || editing.recipe_code}`,
-
-          item_code:
-            editing.batch_number,
-
-          batch_id:
-            editing.id,
-
-          batch_number:
-            editing.batch_number,
-
-          inventory_status:
-            'BULK',
-
-          quantity_in:
-            Number(
-              actualVolume
-            ),
-
-          unit:
-            'ml',
-
-          transaction_type:
-            'production_output',
-
-          transaction_number:
-            editing.production_number,
-
-          reference_type:
-            'production',
-
-          reference_id:
-            editing.id,
-
-          notes:
-            `Hasil mixing ${editing.batch_number}`
+          item_type: 'product',
+          item_id: editing.product_id || editing.recipe_id,
+          item_name: `Bulk ${editing.product_name || editing.recipe_code}`,
+          item_code: editing.batch_number,
+          batch_id: editing.id,
+          batch_number: editing.batch_number,
+          inventory_status: 'BULK',
+          quantity_in: Number(actualVolume),
+          unit: 'ml',
+          unit_cost: Number(hppBulkPerMl || 0),
+          transaction_type: 'production_output',
+          transaction_number: editing.production_number,
+          reference_type: 'production',
+          reference_id: editing.id,
+          notes: `Hasil mixing ${editing.batch_number}`
         });
 
 
