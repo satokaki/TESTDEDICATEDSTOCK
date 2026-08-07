@@ -33,6 +33,7 @@ export async function recordStockMovement({
     quantity_out,
     balance_quantity: 0,
     unit: unit || '',
+    unit_cost: Number(unit_cost) || 0,
     reference_type,
     reference_id,
     notes,
