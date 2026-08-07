@@ -84,7 +84,7 @@ export default function Materials() {
     setLoading(true);
     try {
       const [items, sups] = await Promise.all([
-        base44.entities.Material.list('-created_date', 200),
+        base44.entities.Material.list('-created_date', 2000),
         base44.entities.Supplier.filter({ is_active: true }),
       ]);
       setData(items);
