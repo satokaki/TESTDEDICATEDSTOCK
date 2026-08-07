@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import NumberInput from '@/components/NumberInput';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { generateMaterialCode, generatePremixMaterialCode } from '@/lib/sequence';
+import { createAuditLog } from '@/lib/stockUtils';
 
 const materialTypes = [
   { value: 'RAW_MATERIAL', label: 'Bahan Baku' },
@@ -157,12 +158,17 @@ export default function Materials() {
         supplier_name: isRecipeType ? (sup?.name || '') : '',
         category_name: cat?.name || '',
       };
-      if (editing) { await base44.entities.Material.update(editing.id, payload); toast({ title: 'Bahan diperbarui' }); }
+      if (editing) {
+        await base44.entities.Material.update(editing.id, payload);
+        await createAuditLog({ module: 'Bahan', action: 'Edit', entity_type: 'Material', entity_id: editing.id, reference_number: editing.code, data_before: editing, data_after: payload });
+        toast({ title: 'Bahan diperbarui' });
+      }
       else {
         const code = isPremix
           ? await generatePremixMaterialCode((form.name || 'XX').substring(0, 4).toUpperCase(), Number(form.concentration_value) || 0)
           : await generateMaterialCode();
-        await base44.entities.Material.create({ ...payload, code });
+        const created = await base44.entities.Material.create({ ...payload, code });
+        await createAuditLog({ module: 'Bahan', action: 'Tambah', entity_type: 'Material', entity_id: created.id, reference_number: code });
         toast({ title: 'Bahan ditambahkan' });
       }
       setModalOpen(false); loadData();
@@ -172,7 +178,11 @@ export default function Materials() {
 
   const handleDelete = async (item) => {
     if (!confirm(`Nonaktifkan bahan "${item.name}"?`)) return;
-    try { await base44.entities.Material.update(item.id, { is_active: false }); toast({ title: 'Bahan dinonaktifkan' }); loadData(); }
+    try {
+      await base44.entities.Material.update(item.id, { is_active: false });
+      await createAuditLog({ module: 'Bahan', action: 'Nonaktif', entity_type: 'Material', entity_id: item.id, reference_number: item.code, reason: 'Nonaktifkan bahan' });
+      toast({ title: 'Bahan dinonaktifkan' }); loadData();
+    }
     catch { toast({ variant: 'destructive', title: 'Gagal' }); }
   };
 
