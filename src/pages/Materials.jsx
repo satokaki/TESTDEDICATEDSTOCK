@@ -14,6 +14,7 @@ import NumberInput from '@/components/NumberInput';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { generateMaterialCode, generatePremixMaterialCode } from '@/lib/sequence';
 import { createAuditLog } from '@/lib/stockUtils';
+import { formatCurrency } from '@/lib/format';
 
 const materialTypes = [
   { value: 'RAW_MATERIAL', label: 'Bahan Baku' },
@@ -153,7 +154,7 @@ export default function Materials() {
         vg_content: isRecipeType ? Number(form.vg_content) : undefined,
         nicotine_strength: isRecipeType ? Number(form.nicotine_strength) : undefined,
         min_stock: Number(form.min_stock),
-        last_purchase_price: isRecipeType ? Number(form.last_purchase_price) : undefined,
+        last_purchase_price: Number(form.last_purchase_price) || 0,
         supplier_id: isRecipeType ? form.supplier_id : '',
         supplier_name: isRecipeType ? (sup?.name || '') : '',
         category_name: cat?.name || '',
@@ -194,6 +195,10 @@ export default function Materials() {
       ? <span className="text-[11px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold">Premix</span>
       : <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded">{mtLabel(row.material_type)}</span> },
     { key: 'unit', header: 'Satuan' },
+    { key: 'last_purchase_price', header: 'HBT', render: (row) => {
+      const v = Number(row.last_purchase_price);
+      return <span className="tabular-nums">{(v && !Number.isNaN(v)) ? formatCurrency(row.last_purchase_price) : '—'}</span>;
+    } },
     { key: 'min_stock', header: 'Stok Min', render: (row) => <span className="tabular-nums">{row.min_stock}</span> },
     {
       key: 'is_active', header: 'Status',
@@ -274,6 +279,14 @@ export default function Materials() {
           <div><Label className="text-[12.5px] mb-1">Stok Minimum</Label><NumberInput value={form.min_stock} onChange={v => setForm({ ...form, min_stock: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
         </div>
 
+        {/* Harga Beli Terakhir (HBT) tersedia untuk SEMUA material type */}
+        <div className="border-t border-border pt-3 mt-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label className="text-[12.5px] mb-1">Harga Beli Terakhir (HBT)</Label><NumberInput value={form.last_purchase_price} onChange={v => setForm({ ...form, last_purchase_price: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-1">Harga per satuan dasar ({form.unit || 'unit'}). Dipakai sebagai dasar HPP untuk semua tipe bahan (bahan resep, botol, label, pita cukai, kemasan).</div>
+        </div>
+
         {isRecipeType && (
           <div className="border-t border-border pt-3 mt-1 space-y-3">
             <div className="text-[12px] font-semibold text-muted-foreground">Properti Bahan Resep</div>
@@ -296,7 +309,6 @@ export default function Materials() {
               <div><Label className="text-[12.5px] mb-1">Kandungan PG (%)</Label><NumberInput value={form.pg_content} onChange={v => setForm({ ...form, pg_content: v })} allowDecimal maxDecimals={2} min={0} max={100} className="h-9 text-[13px]" /></div>
               <div><Label className="text-[12.5px] mb-1">Kandungan VG (%)</Label><NumberInput value={form.vg_content} onChange={v => setForm({ ...form, vg_content: v })} allowDecimal maxDecimals={2} min={0} max={100} className="h-9 text-[13px]" /></div>
               <div><Label className="text-[12.5px] mb-1">Kekuatan Nicotine (mg/ml)</Label><NumberInput value={form.nicotine_strength} onChange={v => setForm({ ...form, nicotine_strength: v })} allowDecimal maxDecimals={2} min={0} className="h-9 text-[13px]" /></div>
-              <div><Label className="text-[12.5px] mb-1">Harga Beli Terakhir</Label><NumberInput value={form.last_purchase_price} onChange={v => setForm({ ...form, last_purchase_price: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
             </div>
           </div>
         )}
