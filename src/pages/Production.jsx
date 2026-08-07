@@ -2651,4 +2651,602 @@ export default function Production() {
 
                   </tr>
 
-                </thead
+                </thead>
+
+
+                <tbody>
+
+                  {stockCheck.map(
+                    (item, i) => (
+
+                    <tr
+                      key={i}
+                      className="border-b border-border/30"
+                    >
+
+                      <td className="px-2 py-1">
+                        {item.material_name}
+                      </td>
+
+
+                      {!formulaHidden && (
+
+                        <td className="px-2 py-1 text-right tabular-nums">
+
+                          {Number(
+                            item.percentage || 0
+                          ).toFixed(2)}%
+
+                        </td>
+                      )}
+
+
+                      <td className="px-2 py-1 text-right tabular-nums">
+
+                        {Number(
+                          item.volumeMl || 0
+                        ).toFixed(2)}
+
+                      </td>
+
+
+                      <td className="px-2 py-1 text-right tabular-nums">
+
+                        {Number(
+                          item.gram || 0
+                        ).toFixed(2)}
+
+                      </td>
+
+
+                      <td className="px-2 py-1 text-right tabular-nums">
+
+                        {Number(
+                          item.stockAvailable || 0
+                        ).toFixed(2)}
+
+                      </td>
+
+
+                      <td className="px-2 py-1 text-center">
+
+                        {item.stockSufficient
+
+                          ? (
+
+                            <span className="text-emerald-600 font-semibold">
+                              ✓ Cukup
+                            </span>
+
+                          )
+
+                          : (
+
+                            <span className="text-red-600 font-semibold flex items-center justify-center gap-0.5">
+
+                              <AlertTriangle className="w-3 h-3" />
+
+                              Kurang
+
+                            </span>
+                          )
+                        }
+
+                      </td>
+
+                    </tr>
+
+                  ))}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          </div>
+        )}
+
+      </FormModal>
+
+
+      {/* ====================================================
+          DETAIL / WEIGHING
+      ==================================================== */}
+
+      <FormModal
+
+        open={detailOpen}
+
+        onClose={() =>
+          setDetailOpen(false)
+        }
+
+        title={
+          `Proses Penimbangan · ${editing?.production_number || ''}`
+        }
+
+        onSubmit={
+          handlePostRequest
+        }
+
+        submitting={
+          submitting
+        }
+
+        submitLabel="Posting Produksi"
+
+        size="lg"
+      >
+
+
+        <div className="text-[12px] text-muted-foreground mb-3">
+
+          Batch:
+
+          <b>
+            {' '}
+            {editing?.batch_number}
+          </b>
+
+          {' '}· Target:
+
+          <b>
+
+            {' '}
+
+            {editing?.production_type ===
+            'PREMIX'
+
+              ? `${editing?.target_quantity || 0} ${editing?.target_unit || 'gram'}`
+
+              : `${editing?.target_volume || 0} ml`
+            }
+
+          </b>
+
+        </div>
+
+
+        <div className="text-[11.5px] text-muted-foreground mb-2">
+
+          {
+            productionMaterials.filter(
+              m =>
+                checked[
+                  m.material_id
+                ]
+            ).length
+          }
+
+          /
+
+          {productionMaterials.length}
+
+          {' '}bahan sudah dimasukkan
+
+        </div>
+
+
+        <div className="overflow-x-auto">
+
+          <table className="w-full text-[12px]">
+
+
+            <thead>
+
+              <tr className="bg-muted/40 text-muted-foreground">
+
+                <th className="px-2 py-1 text-center w-10">
+                  ✓
+                </th>
+
+                <th className="px-2 py-1 text-left">
+                  Nama Bahan
+                </th>
+
+                <th className="px-2 py-1 text-right">
+                  Gramasi
+                </th>
+
+              </tr>
+
+            </thead>
+
+
+            <tbody>
+
+              {productionMaterials.map(m => (
+
+                <tr
+
+                  key={m.id}
+
+                  className={
+                    `border-b border-border/30 ${
+                      checked[m.material_id]
+                        ? 'bg-emerald-50/60'
+                        : ''
+                    }`
+                  }
+                >
+
+                  <td className="px-2 py-1.5 text-center">
+
+                    <Checkbox
+
+                      checked={
+                        !!checked[
+                          m.material_id
+                        ]
+                      }
+
+                      onCheckedChange={v =>
+                        setChecked(c => ({
+                          ...c,
+                          [m.material_id]:
+                            v
+                        }))
+                      }
+                    />
+
+                  </td>
+
+
+                  <td className="px-2 py-1.5">
+
+                    {m.material_name}
+
+                  </td>
+
+
+                  <td className="px-2 py-1.5 text-right tabular-nums font-medium">
+
+                    {
+                      (
+                        gramasiMap[
+                          m.material_id
+                        ] ??
+                        Number(
+                          m.required_gram || 0
+                        )
+                      ).toFixed(2)
+                    }
+
+                    {' '}gram
+
+                  </td>
+
+                </tr>
+
+              ))}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+
+        {gramasiTidakSinkron
+
+          ? (
+
+            <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-[11px] text-red-700 mt-2">
+
+              ⚠ Data gramasi produksi tidak sinkron dengan hasil kalkulasi resep.
+              Produksi belum dapat dilanjutkan.
+              Batalkan produksi ini dan buat ulang.
+
+            </div>
+
+          )
+
+          : (
+
+            <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[11px] text-amber-700 mt-2">
+
+              ⚠ Posting akan mengurangi stok bahan dan{' '}
+
+              {
+                editing?.production_type ===
+                'PREMIX'
+                  ? 'menambah stok premix'
+                  : 'membuat output bulk'
+              }.
+
+              {' '}Proses tidak dapat diulang.
+
+            </div>
+          )
+        }
+
+      </FormModal>
+
+
+      {/* ====================================================
+          PREMIX HPP CONFIRMATION
+      ==================================================== */}
+
+      <AlertDialog
+
+        open={
+          premixConfirmOpen
+        }
+
+        onOpenChange={
+          setPremixConfirmOpen
+        }
+      >
+
+        <AlertDialogContent className="max-w-2xl">
+
+
+          <AlertDialogHeader>
+
+            <AlertDialogTitle>
+              Konfirmasi HPP Premix
+            </AlertDialogTitle>
+
+
+            <AlertDialogDescription>
+
+              Verifikasi harga ingredient sudah dalam satuan gram
+              (base unit) sebelum posting.
+
+              Batch:
+
+              <b>
+                {' '}
+                {editing?.batch_number}
+              </b>
+
+            </AlertDialogDescription>
+
+          </AlertDialogHeader>
+
+
+          <div className="overflow-x-auto max-h-[45vh]">
+
+            <table className="w-full text-[12px]">
+
+
+              <thead>
+
+                <tr className="bg-muted/40 text-muted-foreground">
+
+                  <th className="px-2 py-1 text-left">
+                    Bahan
+                  </th>
+
+                  <th className="px-2 py-1 text-left">
+                    Unit
+                  </th>
+
+                  <th className="px-2 py-1 text-right">
+                    Gram
+                  </th>
+
+                  <th className="px-2 py-1 text-right">
+                    Harga/gram
+                  </th>
+
+                  <th className="px-2 py-1 text-right">
+                    Total Cost
+                  </th>
+
+                </tr>
+
+              </thead>
+
+
+              <tbody>
+
+                {(premixPreview?.rows || [])
+                  .map((r, i) => (
+
+                  <tr
+                    key={i}
+                    className="border-b border-border/30"
+                  >
+
+                    <td className="px-2 py-1">
+                      {r.name}
+                    </td>
+
+                    <td className="px-2 py-1">
+                      {r.unit}
+                    </td>
+
+                    <td className="px-2 py-1 text-right tabular-nums">
+
+                      {formatNumber(
+                        r.required_gram,
+                        2
+                      )}
+
+                    </td>
+
+                    <td className="px-2 py-1 text-right tabular-nums">
+
+                      {formatCurrency(
+                        r.price_per_gram
+                      )}
+
+                    </td>
+
+                    <td className="px-2 py-1 text-right tabular-nums">
+
+                      {formatCurrency(
+                        r.cost
+                      )}
+
+                    </td>
+
+                  </tr>
+
+                ))}
+
+              </tbody>
+
+
+              <tfoot>
+
+                <tr className="bg-muted/30 font-semibold">
+
+                  <td
+                    className="px-2 py-1"
+                    colSpan={4}
+                  >
+
+                    Total Input Cost
+
+                  </td>
+
+
+                  <td className="px-2 py-1 text-right tabular-nums">
+
+                    {formatCurrency(
+                      premixPreview?.total || 0
+                    )}
+
+                  </td>
+
+                </tr>
+
+              </tfoot>
+
+            </table>
+
+          </div>
+
+
+          <div className="grid grid-cols-2 gap-2 text-[12px]">
+
+            <div className="bg-muted/40 rounded px-2 py-1.5">
+
+              Output:
+
+              <b>
+                {' '}
+                {formatNumber(
+                  premixPreview?.outputQty || 0
+                )}{' '}
+                gram
+              </b>
+
+            </div>
+
+
+            <div className="bg-primary/10 rounded px-2 py-1.5">
+
+              HPP/gram:
+
+              <b>
+                {' '}
+                {formatCurrency(
+                  premixPreview?.hpp || 0
+                )}
+              </b>
+
+            </div>
+
+          </div>
+
+
+          {premixPreview &&
+          !premixPreview.valid
+
+            ? (
+
+              <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-[11px] text-red-700">
+
+                ⚠ Validasi gagal — posting diblokir:
+
+                <ul className="list-disc ml-4 mt-1">
+
+                  {
+                    premixPreview.rows
+
+                      .filter(
+                        r =>
+                          !r.valid
+                      )
+
+                      .flatMap(
+                        r =>
+                          r.errors.map(
+                            (e, i) => (
+
+                              <li
+                                key={
+                                  r.name + i
+                                }
+                              >
+
+                                {r.name}: {e}
+
+                              </li>
+
+                            )
+                          )
+                      )
+                  }
+
+                </ul>
+
+              </div>
+
+            )
+
+            : (
+
+              <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[11px] text-amber-700">
+
+                ⚠ Pastikan "Harga/gram" bukan harga per KG.
+                Jika nilainya terlihat 1000× dari biasanya,
+                periksa Master Bahan sebelum posting.
+
+              </div>
+            )
+          }
+
+
+          <AlertDialogFooter>
+
+            <AlertDialogCancel>
+              Batal
+            </AlertDialogCancel>
+
+
+            <AlertDialogAction
+
+              disabled={
+                !premixPreview?.valid ||
+                submitting
+              }
+
+              className={
+                !premixPreview?.valid
+                  ? 'opacity-50 pointer-events-none'
+                  : ''
+              }
+
+              onClick={() =>
+                handlePost()
+              }
+            >
+
+              Konfirmasi & Posting
+
+            </AlertDialogAction>
+
+          </AlertDialogFooter>
+
+        </AlertDialogContent>
+
+      </AlertDialog>
+
+    </div>
+  );
+}
