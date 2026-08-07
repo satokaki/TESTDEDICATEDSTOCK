@@ -98,22 +98,37 @@ export default function Bottling() {
        bottle_item_id: bottleMat.id, bottle_item_code: bottleMat.code || '', bottle_item_name: bottleMat.name,
        bottle_stock_used: Number(form.bottle_count), output_status: 'siap_labeling',
      });
+     // PATCH C2: Ambil HPP Bulk per ml dari StockLedger snapshot (hasil Patch C1)
+     const bulkLedgers = await base44.entities.StockLedger.filter({
+       batch_id: form.batch_id, item_id: form.product_id, inventory_status: 'BULK', transaction_type: 'production_output',
+     });
+     const hppBulkPerMl = Number(bulkLedgers[0]?.unit_cost) || 0;
+     // PATCH C2: Hitung cost basis Bottling
+     const bottleHbt = Number(bottleMat?.last_purchase_price) || 0;
+     const bulkVolumeUsed = totalVolume;
+     const bottleQty = Number(form.bottle_count);
+     const bulkCost = bulkVolumeUsed * hppBulkPerMl;
+     const bottleCost = bottleQty * bottleHbt;
+     const totalBottlingCost = bulkCost + bottleCost;
+     const hppBottlingPerBottle = bottleQty > 0 ? totalBottlingCost / bottleQty : 0;
+     const safeHppBottling = Number.isFinite(hppBottlingPerBottle) ? hppBottlingPerBottle : 0;
      await recordStockMovement({
        item_type: 'product', item_id: form.product_id, item_name: product?.name || form.product_name, item_code: product?.code || '',
        batch_id: form.batch_id, batch_number: form.batch_number, inventory_status: 'BULK',
-       quantity_out: totalVolume, unit: 'mililiter', transaction_type: 'bottling_consumption', transaction_number: botNumber,
+       quantity_out: totalVolume, unit: 'mililiter', unit_cost: hppBulkPerMl,
+       transaction_type: 'bottling_consumption', transaction_number: botNumber,
        reference_type: 'bottling', reference_id: order.id, notes: `Bottling ${botNumber}`,
      });
      await recordStockMovement({
        item_type: 'material', item_id: bottleMat.id, item_name: bottleMat.name, item_code: bottleMat.code || '',
-       inventory_status: '', quantity_out: Number(form.bottle_count), unit: bottleMat.unit || 'unit',
+       inventory_status: '', quantity_out: Number(form.bottle_count), unit: bottleMat.unit || 'unit', unit_cost: bottleHbt,
        transaction_type: 'bottling_bottle_consumption', transaction_number: botNumber,
        reference_type: 'bottling', reference_id: order.id, notes: `Botol untuk ${botNumber}`,
      });
      await recordStockMovement({
        item_type: 'product', item_id: form.product_id, item_name: product?.name || form.product_name, item_code: product?.code || '',
        batch_id: form.batch_id, batch_number: form.batch_number, inventory_status: 'READY_FOR_LABELING',
-       quantity_in: Number(form.bottle_count), unit: 'unit',
+       quantity_in: Number(form.bottle_count), unit: 'unit', unit_cost: safeHppBottling,
        transaction_type: 'bottling_output', transaction_number: botNumber,
        reference_type: 'bottling', reference_id: order.id, notes: `Output bottling ${botNumber}`,
      });
@@ -190,4 +205,3 @@ export default function Bottling() {
    </div>
  );
 }
-
