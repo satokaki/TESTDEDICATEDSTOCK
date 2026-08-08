@@ -1355,15 +1355,14 @@ export default function Production() {
 
       else {
 
-        const actualVolume = (totalActualGram / 1.18).toFixed(0);
-
-        const totalInputCost = mats.reduce((sum, m) => {
+        let actualVolume = 0;
+        for (const m of mats) {
           const mat = materials.find(x => x.id === m.material_id);
-          return sum + (Number(m.required_gram || 0) * Number(mat?.last_purchase_price || 0));
-        }, 0);
-
-        const actualOutputMl = Number(actualVolume) || 0;
-        const hppBulkPerMl = actualOutputMl > 0 ? totalInputCost / actualOutputMl : 0;
+          const d = isOneToOnePremix(mat) ? 1 : (Number(mat?.density) || (m.material_type === 'vegetable_glycerin' ? 1.261 : 1.036));
+          if (d > 0) actualVolume += Number(m.required_gram || 0) / d;
+        }
+        const totalInputCost = mats.reduce((s, m) => s + Number(m.required_gram || 0) * Number(materials.find(x => x.id === m.material_id)?.last_purchase_price || 0), 0);
+        const actualOutputMl = Number(actualVolume) || 0, hppBulkPerMl = actualOutputMl > 0 ? totalInputCost / actualOutputMl : 0;
 
         await recordStockMovement({
           item_type: 'product',
