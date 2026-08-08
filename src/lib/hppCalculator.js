@@ -1,12 +1,19 @@
 /**
  * HPP Product Calculator
  *
- * Priority:
- * 1. Actual StockLedger output.unit_cost
- * 2. Standard Recipe + ProductComponentMapping
+ * SOURCE OF TRUTH:
+ * 1. Actual StockLedger untuk stage yang SUDAH diproses.
+ * 2. Recipe + ProductComponentMapping sebagai standard/fallback.
  *
- * Recipe boleh berasal dari source product untuk kasus maklon.
- * Mapping selalu berasal dari final/result product.
+ * Prinsip breakdown:
+ * Bulk tetap Bulk.
+ * Botol tetap Botol.
+ * Label tetap Label.
+ * Box tetap Box.
+ * Cukai tetap Cukai.
+ *
+ * Nilai cumulative output TIDAK pernah dimasukkan kembali
+ * sebagai nilai salah satu komponen.
  */
 
 import { calculateRecipe } from './recipeCalculator';
@@ -14,6 +21,7 @@ import { calculateRecipe } from './recipeCalculator';
 function ingredientCost(item, material) {
   const price = Number(material?.last_purchase_price) || 0;
   const isMl = material?.unit === 'mililiter';
+
   const qty = isMl
     ? Number(item.volumeMl) || 0
     : Number(item.gram) || 0;
@@ -42,139 +50,552 @@ function ledgerTime(row) {
   ).getTime();
 }
 
-export function getActualHppFromLedger(stockLedger, productId) {
-  if (!Array.isArray(stockLedger) || !productId) return null;
+function rowTotalCost(row) {
+  return (
+    (Number(row?.unit_cost) || 0) *
+    (Number(row?.quantity_out) || 0)
+  );
+}
 
-  const outputs = stockLedger
-    .filter(row =>
-      row?.item_id === productId &&
-      String(row?.transaction_type || '').endsWith('_output') &&
-      Number(row?.quantity_in) > 0 &&
-      Number(row?.unit_cost) > 0
+function latestOutput(rows, type, maxTime = Infinity) {
+  return (rows || [])
+    .filter(
+      row =>
+        row.transaction_type === type &&
+        Number(row.quantity_in) > 0 &&
+        ledgerTime(row) <= maxTime
+    )
+    .sort(
+      (a, b) =>
+        ledgerTime(b) - ledgerTime(a)
+    )[0] || null;
+}
+
+function refsFor(stockLedger, output) {
+  if (!output?.reference_id) return [];
+
+  return (stockLedger || []).filter(
+    row =>
+      row.reference_id ===
+      output.reference_id
+  );
+}
+
+function actualRows(rows, outputQty) {
+  return (rows || []).map(row => {
+    const qtyOut =
+      Number(row.quantity_out) || 0;
+
+    const total =
+      rowTotalCost(row);
+
+    const perBottle =
+      outputQty > 0
+        ? total / outputQty
+        : 0;
+
+    return {
+      materialId: row.item_id,
+      materialName:
+        row.item_name || 'Aktual',
+      materialCode:
+        row.item_code || '',
+      qty:
+        outputQty > 0
+          ? qtyOut / outputQty
+          : 0,
+      unitLabel:
+        row.unit || 'pcs',
+      unitCost:
+        Number(row.unit_cost) || 0,
+      cost: perBottle,
+    };
+  });
+}
+
+/**
+ * ACTUAL HPP BREAKDOWN
+ *
+ * Mencari output TERBARU dari product.
+ * Setelah batch terbaru diketahui, komponen HPP
+ * direkonstruksi dari setiap stage dalam batch tersebut.
+ *
+ * Contoh:
+ *
+ * production      Bulk 2054
+ * bottling        + Bottle 1500
+ * labeling        + Label 650
+ * excise          + Excise + Box
+ *
+ * Tidak pernah:
+ * labeling previous HPP 3554 → dianggap Bulk 3554.
+ */
+export function getActualHppFromLedger(
+  stockLedger,
+  productId,
+  mappings = [],
+  bottleSize = 0
+) {
+  if (
+    !Array.isArray(stockLedger) ||
+    !productId
+  ) {
+    return null;
+  }
+
+  /*
+   * Cari actual output terbaru product.
+   *
+   * Timestamp menang.
+   * Stage priority hanya tie breaker.
+   */
+  const productOutputs = stockLedger
+    .filter(
+      row =>
+        row?.item_id === productId &&
+        String(
+          row?.transaction_type || ''
+        ).endsWith('_output') &&
+        Number(row?.quantity_in) > 0 &&
+        Number(row?.unit_cost) > 0
     )
     .sort((a, b) => {
-      const stage =
-        (STAGE_PRIORITY[b.transaction_type] || 0) -
-        (STAGE_PRIORITY[a.transaction_type] || 0);
+      const timeDiff =
+        ledgerTime(b) -
+        ledgerTime(a);
 
-      return stage || ledgerTime(b) - ledgerTime(a);
+      if (timeDiff) {
+        return timeDiff;
+      }
+
+      return (
+        (STAGE_PRIORITY[
+          b.transaction_type
+        ] || 0) -
+        (STAGE_PRIORITY[
+          a.transaction_type
+        ] || 0)
+      );
     });
 
-  if (!outputs.length) return null;
+  if (!productOutputs.length) {
+    return null;
+  }
 
-  const latest = outputs[0];
-  const outputQty = Number(latest.quantity_in) || 1;
+  const latest =
+    productOutputs[0];
 
-  const refs = latest.reference_id
-    ? stockLedger.filter(
-        row => row.reference_id === latest.reference_id
-      )
-    : [];
+  const latestTime =
+    ledgerTime(latest);
 
-  let previousStagePerBottle = 0;
-  let bottlePerBottle = 0;
-  let labelPerBottle = 0;
-  let excisePerBottle = 0;
+  const batchNumber =
+    latest.batch_number || '';
 
-  if (latest.transaction_type === 'bottling_output') {
-    const input = refs.find(
-      row => row.transaction_type === 'bottling_consumption'
+  /*
+   * Setelah batch terbaru diketahui,
+   * cari SEMUA stage dalam batch tersebut.
+   *
+   * Ini penting untuk maklon:
+   *
+   * Bottling masih item IZZI
+   * Labeling output sudah item YMMY
+   *
+   * tetapi batch tetap sama.
+   */
+  const batchEntries =
+    batchNumber
+      ? stockLedger.filter(
+          row =>
+            row.batch_number ===
+            batchNumber
+        )
+      : stockLedger.filter(
+          row =>
+            row.reference_id ===
+            latest.reference_id
+        );
+
+  const stage =
+    STAGE_PRIORITY[
+      latest.transaction_type
+    ] || 0;
+
+  /*
+   * ==========================================
+   * PRODUCTION / BULK
+   * ==========================================
+   */
+
+  const productionOutput =
+    latestOutput(
+      batchEntries,
+      'production_output',
+      latestTime
     );
 
-    if (input) {
-      const total =
-        (Number(input.unit_cost) || 0) *
-        (Number(input.quantity_out) || 0);
+  let bulkPerBottle = 0;
 
-      previousStagePerBottle = total / outputQty;
+  /*
+   * Jika Bottling sudah ada,
+   * Bulk paling akurat dihitung dari
+   * bottling_consumption transaksi Bottling.
+   */
+  const bottlingOutput =
+    stage >= 2
+      ? latestOutput(
+          batchEntries,
+          'bottling_output',
+          latestTime
+        )
+      : null;
+
+  let bottlePerBottle = 0;
+  let bottleRows = [];
+
+  if (bottlingOutput) {
+    const refs =
+      refsFor(
+        stockLedger,
+        bottlingOutput
+      );
+
+    const outputQty =
+      Number(
+        bottlingOutput.quantity_in
+      ) || 1;
+
+    const bulkConsumption =
+      refs.filter(
+        row =>
+          row.transaction_type ===
+            'bottling_consumption' &&
+          row.item_type === 'product'
+      );
+
+    const bulkTotal =
+      bulkConsumption.reduce(
+        (sum, row) =>
+          sum +
+          rowTotalCost(row),
+        0
+      );
+
+    if (
+      outputQty > 0 &&
+      bulkTotal > 0
+    ) {
+      bulkPerBottle =
+        bulkTotal / outputQty;
     }
 
-    const cost = refs
-      .filter(
+    const bottleConsumptions =
+      refs.filter(
         row =>
           row.transaction_type ===
           'bottling_bottle_consumption'
-      )
-      .reduce(
+      );
+
+    const bottleTotal =
+      bottleConsumptions.reduce(
         (sum, row) =>
           sum +
-          (Number(row.unit_cost) || 0) *
-          (Number(row.quantity_out) || 0),
+          rowTotalCost(row),
         0
       );
 
-    bottlePerBottle = cost / outputQty;
-  }
+    bottlePerBottle =
+      outputQty > 0
+        ? bottleTotal / outputQty
+        : 0;
 
-  if (latest.transaction_type === 'labeling_output') {
-    const input = refs.find(
-      row => row.transaction_type === 'labeling_consumption'
-    );
-
-    previousStagePerBottle =
-      Number(input?.unit_cost) || 0;
-
-    const cost = refs
-      .filter(
-        row => row.transaction_type === 'label_consumption'
-      )
-      .reduce(
-        (sum, row) =>
-          sum +
-          (Number(row.unit_cost) || 0) *
-          (Number(row.quantity_out) || 0),
-        0
+    bottleRows =
+      actualRows(
+        bottleConsumptions,
+        outputQty
       );
-
-    labelPerBottle = cost / outputQty;
   }
 
-  if (latest.transaction_type === 'excise_output') {
-    const input = refs.find(
-      row =>
-        row.transaction_type === 'excise_consumption' &&
-        row.item_type === 'product'
-    );
-
-    previousStagePerBottle =
-      Number(input?.unit_cost) || 0;
-
-    const cost = refs
-      .filter(
-        row =>
-          row.transaction_type === 'excise_consumption' &&
-          row.item_type === 'material'
-      )
-      .reduce(
-        (sum, row) =>
-          sum +
-          (Number(row.unit_cost) || 0) *
-          (Number(row.quantity_out) || 0),
-        0
-      );
-
-    excisePerBottle = cost / outputQty;
-  }
-
+  /*
+   * Belum Bottling:
+   * production_output.unit_cost adalah cost/ml.
+   * Convert ke cost per bottle.
+   */
   if (
-    latest.transaction_type === 'production_output' ||
-    latest.transaction_type === 'premix_output'
+    bulkPerBottle <= 0 &&
+    productionOutput
   ) {
-    previousStagePerBottle =
-      Number(latest.unit_cost) || 0;
+    const costPerMl =
+      Number(
+        productionOutput.unit_cost
+      ) || 0;
+
+    bulkPerBottle =
+      bottleSize > 0
+        ? costPerMl *
+          Number(bottleSize)
+        : costPerMl;
+  }
+
+  /*
+   * ==========================================
+   * LABELING
+   * ==========================================
+   */
+
+  let labelPerBottle = 0;
+  let labelRows = [];
+
+  const labelingOutput =
+    stage >= 3
+      ? latestOutput(
+          batchEntries,
+          'labeling_output',
+          latestTime
+        )
+      : null;
+
+  if (labelingOutput) {
+    const refs =
+      refsFor(
+        stockLedger,
+        labelingOutput
+      );
+
+    const outputQty =
+      Number(
+        labelingOutput.quantity_in
+      ) || 1;
+
+    const consumptions =
+      refs.filter(
+        row =>
+          row.transaction_type ===
+          'label_consumption'
+      );
+
+    const total =
+      consumptions.reduce(
+        (sum, row) =>
+          sum +
+          rowTotalCost(row),
+        0
+      );
+
+    labelPerBottle =
+      outputQty > 0
+        ? total / outputQty
+        : 0;
+
+    labelRows =
+      actualRows(
+        consumptions,
+        outputQty
+      );
+  }
+
+  /*
+   * ==========================================
+   * CUKAI + BOX
+   * ==========================================
+   */
+
+  let excisePerBottle = 0;
+  let boxPerBottle = 0;
+
+  let exciseRows = [];
+  let boxRows = [];
+
+  const exciseOutput =
+    stage >= 4
+      ? latestOutput(
+          batchEntries,
+          'excise_output',
+          latestTime
+        )
+      : null;
+
+  if (exciseOutput) {
+    const refs =
+      refsFor(
+        stockLedger,
+        exciseOutput
+      );
+
+    const outputQty =
+      Number(
+        exciseOutput.quantity_in
+      ) || 1;
+
+    const materialConsumptions =
+      refs.filter(
+        row =>
+          row.transaction_type ===
+            'excise_consumption' &&
+          row.item_type === 'material'
+      );
+
+    /*
+     * Gunakan mapping final product untuk
+     * membedakan Box vs Pita Cukai.
+     */
+    const activeMappings =
+      (mappings || []).filter(
+        mapping =>
+          mapping.is_active !== false
+      );
+
+    const boxIds =
+      new Set(
+        activeMappings
+          .filter(
+            mapping =>
+              mapping.component_type ===
+              'box'
+          )
+          .map(
+            mapping =>
+              mapping.material_id
+          )
+          .filter(Boolean)
+      );
+
+    const exciseIds =
+      new Set(
+        activeMappings
+          .filter(
+            mapping =>
+              mapping.component_type ===
+              'excise'
+          )
+          .map(
+            mapping =>
+              mapping.material_id
+          )
+          .filter(Boolean)
+      );
+
+    const boxConsumptions = [];
+    const exciseConsumptions = [];
+
+    for (
+      const row of
+      materialConsumptions
+    ) {
+      if (
+        boxIds.has(row.item_id)
+      ) {
+        boxConsumptions.push(row);
+      } else if (
+        exciseIds.has(row.item_id)
+      ) {
+        exciseConsumptions.push(row);
+      } else {
+        /*
+         * Fallback:
+         * material excise yang tidak dapat
+         * dikenali mapping tetap masuk
+         * kelompok Cukai agar cost tidak hilang.
+         */
+        exciseConsumptions.push(row);
+      }
+    }
+
+    const boxTotal =
+      boxConsumptions.reduce(
+        (sum, row) =>
+          sum +
+          rowTotalCost(row),
+        0
+      );
+
+    const exciseTotal =
+      exciseConsumptions.reduce(
+        (sum, row) =>
+          sum +
+          rowTotalCost(row),
+        0
+      );
+
+    boxPerBottle =
+      outputQty > 0
+        ? boxTotal / outputQty
+        : 0;
+
+    excisePerBottle =
+      outputQty > 0
+        ? exciseTotal / outputQty
+        : 0;
+
+    boxRows =
+      actualRows(
+        boxConsumptions,
+        outputQty
+      );
+
+    exciseRows =
+      actualRows(
+        exciseConsumptions,
+        outputQty
+      );
+  }
+
+  /*
+   * ==========================================
+   * FINAL ACTUAL TOTAL
+   * ==========================================
+   *
+   * output.unit_cost tetap SOURCE OF TRUTH.
+   */
+
+  let actualHppPerBottle =
+    Number(latest.unit_cost) || 0;
+
+  /*
+   * production_output.unit_cost adalah per ml.
+   */
+  if (
+    latest.transaction_type ===
+    'production_output'
+  ) {
+    actualHppPerBottle =
+      bottleSize > 0
+        ? actualHppPerBottle *
+          Number(bottleSize)
+        : actualHppPerBottle;
   }
 
   return {
-    actualHppPerUnit: Number(latest.unit_cost) || 0,
-    previousStagePerBottle,
+    actualHppPerBottle,
+
+    bulkPerBottle,
     bottlePerBottle,
     labelPerBottle,
+    boxPerBottle,
     excisePerBottle,
-    transactionType: latest.transaction_type,
-    stage: latest.inventory_status || '',
-    batchNumber: latest.batch_number || '',
-    referenceId: latest.reference_id || '',
-    outputQty,
+
+    bottleRows,
+    labelRows,
+    boxRows,
+    exciseRows,
+
+    transactionType:
+      latest.transaction_type,
+
+    stage:
+      latest.inventory_status ||
+      '',
+
+    stagePriority:
+      stage,
+
+    batchNumber,
+
+    referenceId:
+      latest.reference_id || '',
+
+    outputQty:
+      Number(latest.quantity_in) ||
+      1,
   };
 }
 
@@ -188,17 +609,27 @@ export function computeProductHpp({
   vgMaterial,
   stockLedger,
 }) {
-  if (!product) return null;
+  if (!product) {
+    return null;
+  }
 
-  const bottleSize = Number(product.bottle_size) || 0;
+  const bottleSize =
+    Number(
+      product.bottle_size
+    ) || 0;
+
   const volume =
-    Number(recipe?.target_volume) ||
+    Number(
+      recipe?.target_volume
+    ) ||
     bottleSize ||
     0;
 
   const result = {
     product,
-    recipe: recipe || null,
+    recipe:
+      recipe || null,
+
     volume,
     bottleSize,
 
@@ -209,217 +640,358 @@ export function computeProductHpp({
 
     bottleRows: [],
     bottleTotal: 0,
+
     boxRows: [],
     boxTotal: 0,
+
     labelRows: [],
     labelTotal: 0,
+
     exciseRows: [],
     exciseTotal: 0,
 
     hppPerBottle: 0,
-    salePrice: Number(product.sale_price) || 0,
+
+    salePrice:
+      Number(
+        product.sale_price
+      ) || 0,
+
     margin: 0,
     marginPct: 0,
 
-    hasRecipe: !!recipe,
-    validation: null,
-    useActual: false,
-    actualHpp: null,
+    hasRecipe:
+      !!recipe,
+
+    validation:
+      null,
+
+    useActual:
+      false,
+
+    actualHpp:
+      null,
   };
 
   const matById = id =>
-    (materials || []).find(m => m.id === id);
+    (materials || []).find(
+      material =>
+        material.id === id
+    );
 
   /*
-   * RECIPE / BULK
-   * Optional.
-   * Produk maklon boleh memakai recipe source product.
+   * ==========================================
+   * STANDARD BULK / RECIPE
+   * ==========================================
    */
+
   if (recipe) {
-    const calc = calculateRecipe({
-      ingredients: (ingredients || []).map(item => ({
-        ...item,
-        percentage: Number(item.percentage) || 0,
-      })),
-      targetVolume: volume,
-      targetNicotine: recipe.target_nicotine,
-      targetPG: recipe.target_pg,
-      targetVG: recipe.target_vg,
-      pgMaterial,
-      vgMaterial,
-    });
+    const calc =
+      calculateRecipe({
+        ingredients:
+          (ingredients || []).map(
+            item => ({
+              ...item,
+              percentage:
+                Number(
+                  item.percentage
+                ) || 0,
+            })
+          ),
 
-    result.validation = calc.validation;
+        targetVolume:
+          volume,
 
-    result.bulkRows = calc.items.map(item => {
-      const mat = matById(item.material_id);
+        targetNicotine:
+          recipe.target_nicotine,
 
-      return {
-        ...ingredientCost(item, mat),
-        materialId: item.material_id,
-        materialName:
-          item.material_name ||
-          mat?.name ||
-          (item.isAuto ? 'Auto' : '—'),
-        materialCode: mat?.code || '',
-        materialType: item.material_type,
-        isPremix: !!item.is_premix,
-        isAuto: !!item.isAuto,
-        percentage: item.percentage,
-      };
-    });
+        targetPG:
+          recipe.target_pg,
 
-    result.bulkTotal = result.bulkRows.reduce(
-      (sum, row) => sum + row.cost,
-      0
-    );
+        targetVG:
+          recipe.target_vg,
+
+        pgMaterial,
+        vgMaterial,
+      });
+
+    result.validation =
+      calc.validation;
+
+    result.bulkRows =
+      calc.items.map(
+        item => {
+          const mat =
+            matById(
+              item.material_id
+            );
+
+          return {
+            ...ingredientCost(
+              item,
+              mat
+            ),
+
+            materialId:
+              item.material_id,
+
+            materialName:
+              item.material_name ||
+              mat?.name ||
+              (
+                item.isAuto
+                  ? 'Auto'
+                  : '—'
+              ),
+
+            materialCode:
+              mat?.code || '',
+
+            materialType:
+              item.material_type,
+
+            isPremix:
+              !!item.is_premix,
+
+            isAuto:
+              !!item.isAuto,
+
+            percentage:
+              item.percentage,
+          };
+        }
+      );
+
+    result.bulkTotal =
+      result.bulkRows.reduce(
+        (sum, row) =>
+          sum + row.cost,
+        0
+      );
 
     result.costPerMl =
       volume > 0
-        ? result.bulkTotal / volume
+        ? result.bulkTotal /
+          volume
         : 0;
 
     result.bulkPerBottle =
       bottleSize > 0
-        ? result.costPerMl * bottleSize
+        ? result.costPerMl *
+          bottleSize
         : 0;
   }
 
   /*
-   * PRODUCT COMPONENT MAPPING
+   * ==========================================
+   * STANDARD MAPPING
+   * ==========================================
    *
-   * PENTING:
-   * Tidak tergantung Recipe.
-   *
-   * Jadi produk maklon tanpa resep sendiri
-   * tetap membaca mapping botol/box/label/cukai.
+   * Tetap dihitung walaupun tidak ada Recipe.
+   * Ini penting untuk maklon.
    */
-  const activeMappings = (mappings || []).filter(
-    mapping => mapping.is_active !== false
-  );
+
+  const activeMappings =
+    (mappings || []).filter(
+      mapping =>
+        mapping.is_active !== false
+    );
 
   const buildComp = type =>
     activeMappings
       .filter(
         mapping =>
-          mapping.component_type === type
+          mapping.component_type ===
+          type
       )
       .map(mapping => {
         const mat =
-          matById(mapping.material_id);
+          matById(
+            mapping.material_id
+          );
 
         const price =
-          Number(mat?.last_purchase_price) || 0;
+          Number(
+            mat?.last_purchase_price
+          ) || 0;
 
         const qty =
-          Number(mapping.quantity_per_unit) || 1;
+          Number(
+            mapping.quantity_per_unit
+          ) || 1;
 
         return {
-          materialId: mapping.material_id,
+          materialId:
+            mapping.material_id,
+
           materialName:
             mapping.material_name ||
             mat?.name ||
             '—',
+
           materialCode:
             mapping.material_code ||
             mat?.code ||
             '',
+
           qty,
-          unitLabel: 'pcs',
-          unitCost: price,
-          cost: qty * price,
+
+          unitLabel:
+            'pcs',
+
+          unitCost:
+            price,
+
+          cost:
+            qty * price,
         };
       });
 
-  result.bottleRows = buildComp('bottle');
-  result.boxRows = buildComp('box');
-  result.labelRows = buildComp('label');
-  result.exciseRows = buildComp('excise');
+  result.bottleRows =
+    buildComp('bottle');
+
+  result.boxRows =
+    buildComp('box');
+
+  result.labelRows =
+    buildComp('label');
+
+  result.exciseRows =
+    buildComp('excise');
 
   result.bottleTotal =
     result.bottleRows.reduce(
-      (sum, row) => sum + row.cost,
+      (sum, row) =>
+        sum + row.cost,
       0
     );
 
   result.boxTotal =
     result.boxRows.reduce(
-      (sum, row) => sum + row.cost,
+      (sum, row) =>
+        sum + row.cost,
       0
     );
 
   result.labelTotal =
     result.labelRows.reduce(
-      (sum, row) => sum + row.cost,
+      (sum, row) =>
+        sum + row.cost,
       0
     );
 
   result.exciseTotal =
     result.exciseRows.reduce(
-      (sum, row) => sum + row.cost,
+      (sum, row) =>
+        sum + row.cost,
       0
     );
 
   /*
-   * ACTUAL HPP
+   * ==========================================
+   * ACTUAL
+   * ==========================================
    */
+
   const actual =
     getActualHppFromLedger(
       stockLedger,
-      product.id
+      product.id,
+      mappings,
+      bottleSize
     );
 
   if (actual) {
     result.useActual = true;
-    result.actualHpp = actual;
-    result.hppPerBottle =
-      actual.actualHppPerUnit;
 
+    result.actualHpp =
+      actual;
+
+    /*
+     * TOTAL selalu source of truth
+     * dari latest output.unit_cost.
+     */
+    result.hppPerBottle =
+      actual.actualHppPerBottle;
+
+    /*
+     * BULK SELALU BULK.
+     *
+     * Jangan lagi diganti dengan
+     * previous cumulative stage.
+     */
     if (
-      actual.transactionType === 'production_output' ||
-      actual.transactionType === 'premix_output'
+      actual.bulkPerBottle > 0
     ) {
       result.bulkPerBottle =
-        actual.actualHppPerUnit;
+        actual.bulkPerBottle;
     }
 
-    if (actual.transactionType === 'bottling_output') {
-      result.bulkPerBottle =
-        actual.previousStagePerBottle ||
-        Math.max(
-          0,
-          actual.actualHppPerUnit -
-          actual.bottlePerBottle
-        );
-
+    /*
+     * BOTTLING SUDAH TERJADI
+     */
+    if (
+      actual.stagePriority >= 2
+    ) {
       result.bottleTotal =
         actual.bottlePerBottle;
+
+      if (
+        actual.bottleRows.length
+      ) {
+        result.bottleRows =
+          actual.bottleRows;
+      }
     }
 
-    if (actual.transactionType === 'labeling_output') {
-      /*
-       * Previous stage sudah mengandung
-       * bulk + bottling.
-       */
-      result.bulkPerBottle =
-        actual.previousStagePerBottle;
-
+    /*
+     * LABELING SUDAH TERJADI
+     */
+    if (
+      actual.stagePriority >= 3
+    ) {
       result.labelTotal =
         actual.labelPerBottle;
+
+      if (
+        actual.labelRows.length
+      ) {
+        result.labelRows =
+          actual.labelRows;
+      }
     }
 
-    if (actual.transactionType === 'excise_output') {
-      /*
-       * Previous stage sudah mengandung
-       * bulk + bottle + label.
-       */
-      result.bulkPerBottle =
-        actual.previousStagePerBottle;
+    /*
+     * CUKAI SUDAH TERJADI
+     */
+    if (
+      actual.stagePriority >= 4
+    ) {
+      result.boxTotal =
+        actual.boxPerBottle;
 
       result.exciseTotal =
         actual.excisePerBottle;
+
+      if (
+        actual.boxRows.length
+      ) {
+        result.boxRows =
+          actual.boxRows;
+      }
+
+      if (
+        actual.exciseRows.length
+      ) {
+        result.exciseRows =
+          actual.exciseRows;
+      }
     }
   } else {
+    /*
+     * BELUM ADA ACTUAL TRANSACTION.
+     * Gunakan standard HPP.
+     */
     result.hppPerBottle =
       result.bulkPerBottle +
       result.bottleTotal +
