@@ -4,6 +4,7 @@ import { useToast } from '@/components/ui/use-toast';
 import PageHeader from '@/components/PageHeader';
 import DataTable from '@/components/DataTable';
 import FormModal from '@/components/FormModal';
+import SearchableSelect from '@/components/SearchableSelect';
 import StatusBadge from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -2247,45 +2248,22 @@ export default function Production() {
             </Label>
 
 
-            <Select
-
-              value={
-                form.recipe_id
-              }
-
+            <SearchableSelect
+              value={form.recipe_id}
               onValueChange={v =>
                 setForm({
                   ...form,
                   recipe_id: v
                 })
               }
-            >
-
-              <SelectTrigger className="h-9 text-[13px]">
-
-                <SelectValue placeholder="Pilih resep approved" />
-
-              </SelectTrigger>
-
-
-              <SelectContent>
-
-                {visibleRecipes.map(r => (
-
-                  <SelectItem
-                    key={r.id}
-                    value={r.id}
-                  >
-
-                    {r.code} · {r.name} (v{r.version})
-
-                  </SelectItem>
-
-                ))}
-
-              </SelectContent>
-
-            </Select>
+              options={visibleRecipes.map(r => ({
+                value: r.id,
+                label: `${r.code || ''} · ${r.name || ''} (v${r.version || 1})`,
+                keywords: `${r.code || ''} ${r.name || ''} ${r.brand_name || ''} ${r.product_name || ''}`,
+              }))}
+              placeholder="Cari kode / nama resep..."
+              className="h-9"
+            />
 
           </div>
 
