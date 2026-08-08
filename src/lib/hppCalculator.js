@@ -27,7 +27,47 @@ function ingredientCost(item, material) {
   return { qty, unitLabel, unitCost: price, cost: qty * price };
 }
 
-export function computeProductHpp({ product, recipe, ingredients, materials, mappings, pgMaterial, vgMaterial }) {
+// Priority 1: Find actual HPP from StockLedger output entries.
+// Returns null if no actual transaction output exists (fallback to standard cost).
+// Stage priority: excise_output > labeling_output > bottling_output > production_output.
+// Within the same stage, the newest transaction wins.
+const STAGE_PRIORITY = {
+  excise_output: 4,
+  labeling_output: 3,
+  bottling_output: 2,
+  production_output: 1,
+  premix_output: 1,
+};
+export function getActualHppFromLedger(stockLedger, productId) {
+  if (!stockLedger || !productId) return null;
+  const outputs = stockLedger
+    .filter((l) => l.item_id === productId && l.transaction_type.endsWith('_output') && Number(l.quantity_in) > 0)
+    .sort((a, b) => {
+      const pa = STAGE_PRIORITY[a.transaction_type] || 0;
+      const pb = STAGE_PRIORITY[b.transaction_type] || 0;
+      if (pa !== pb) return pb - pa;
+      return new Date(b.transaction_date || 0) - new Date(a.transaction_date || 0);
+    });
+  if (outputs.length === 0) return null;
+  const latest = outputs[0];
+  const outputQty = Number(latest.quantity_in) || 1;
+  const actualHppPerUnit = Number(latest.unit_cost) || 0;
+  const batchNumber = latest.batch_number;
+  const batchEntries = batchNumber
+    ? stockLedger.filter((l) => l.batch_number === batchNumber)
+    : stockLedger.filter((l) => l.reference_id === latest.reference_id);
+  let bottlePerBottle = 0, labelPerBottle = 0, excisePerBottle = 0;
+  for (const e of batchEntries) {
+    const total = (Number(e.unit_cost) || 0) * (Number(e.quantity_out) || 0);
+    if (e.transaction_type === 'bottling_bottle_consumption') bottlePerBottle += total / outputQty;
+    else if (e.transaction_type === 'label_consumption') labelPerBottle += total / outputQty;
+    else if (e.transaction_type === 'excise_consumption') excisePerBottle += total / outputQty;
+  }
+  const bulkPerBottle = Math.max(0, actualHppPerUnit - bottlePerBottle - labelPerBottle - excisePerBottle);
+  return { actualHppPerUnit, bulkPerBottle, bottlePerBottle, labelPerBottle, excisePerBottle, stage: latest.inventory_status, transactionType: latest.transaction_type, batchNumber, outputQty };
+}
+
+export function computeProductHpp({ product, recipe, ingredients, materials, mappings, pgMaterial, vgMaterial, stockLedger }) {
   if (!product) return null;
 
   const bottleSize = Number(product.bottle_size) || 0;
@@ -119,7 +159,29 @@ export function computeProductHpp({ product, recipe, ingredients, materials, map
   result.labelTotal = result.labelRows.reduce((s, r) => s + r.cost, 0);
   result.exciseTotal = result.exciseRows.reduce((s, r) => s + r.cost, 0);
 
-  result.hppPerBottle = result.bulkPerBottle + result.bottleTotal + result.boxTotal + result.labelTotal + result.exciseTotal;
+  // Priority 1: Actual transaction cost from StockLedger (overrides standard)
+  const actual = getActualHppFromLedger(stockLedger, product?.id);
+  if (actual) {
+    result.useActual = true;
+    result.actualHpp = actual;
+    result.bulkPerBottle = actual.bulkPerBottle;
+    result.bottleTotal = actual.bottlePerBottle;
+    result.labelTotal = actual.labelPerBottle;
+    result.exciseTotal = actual.excisePerBottle;
+    result.boxTotal = 0;
+    if (actual.bottlePerBottle > 0) {
+      result.bottleRows = [{ materialName: 'Botol (aktual)', materialCode: actual.batchNumber || '', qty: 1, unitLabel: 'pcs', unitCost: actual.bottlePerBottle, cost: actual.bottlePerBottle }];
+    }
+    if (actual.labelPerBottle > 0) {
+      result.labelRows = [{ materialName: 'Label (aktual)', materialCode: actual.batchNumber || '', qty: 1, unitLabel: 'pcs', unitCost: actual.labelPerBottle, cost: actual.labelPerBottle }];
+    }
+    if (actual.excisePerBottle > 0) {
+      result.exciseRows = [{ materialName: 'Pita Cukai (aktual)', materialCode: actual.batchNumber || '', qty: 1, unitLabel: 'pcs', unitCost: actual.excisePerBottle, cost: actual.excisePerBottle }];
+    }
+    result.hppPerBottle = actual.actualHppPerUnit;
+  } else {
+    result.hppPerBottle = result.bulkPerBottle + result.bottleTotal + result.boxTotal + result.labelTotal + result.exciseTotal;
+  }
   result.margin = result.salePrice - result.hppPerBottle;
   result.marginPct = result.salePrice > 0 ? (result.margin / result.salePrice) * 100 : 0;
 
