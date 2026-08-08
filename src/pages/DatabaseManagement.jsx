@@ -1,293 +1,465 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useToast } from '@/components/ui/use-toast';
 import PageHeader from '@/components/PageHeader';
-import DataTable from '@/components/DataTable';
-import FormModal from '@/components/FormModal';
-import StatusBadge from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import NumberInput from '@/components/NumberInput';
-import PdfButton from '@/components/PdfButton';
-import { exportDocumentToPDF } from '@/lib/pdfExport';
-import { Plus } from 'lucide-react';
-import { generateOrderNumber } from '@/lib/sequence';
-import { recordStockMovement, getAllStockBalances, createAuditLog } from '@/lib/stockUtils';
-import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
+import FormModal from '@/components/FormModal';
+import { Save, RotateCcw, Upload, ShieldAlert, Trash2, Download, Lock, FileUp, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { APP_ENVIRONMENT, IS_PRODUCTION, RESET_CONFIRM_PHRASE, RESTORE_CONFIRM_PHRASE, MAX_RESTORE_FILE_SIZE } from '@/lib/dbEnv';
 
-export default function Excise() {
+// Fetch a signed URL as a blob and force a browser download (never renders inline).
+async function triggerDownload(signedUrl, fileName) {
+  const res = await fetch(signedUrl);
+  if (!res.ok) throw new Error('Gagal mengunduh file (status ' + res.status + ')');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName || 'LABPRO_BACKUP.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+export default function DatabaseManagement() {
   const { toast } = useToast();
-  const [data, setData] = useState([]);
-  const [belumCukaiStock, setBelumCukaiStock] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [brands, setBrands] = useState([]);
-  const [exciseMaterials, setExciseMaterials] = useState([]);
-  const [boxMaterials, setBoxMaterials] = useState([]);
-  const [exciseStocks, setExciseStocks] = useState({});
+  const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '', use_box: false, box_material_id: '', box_material_name: '', box_quantity_per_unit: '1' });
+  const [busy, setBusy] = useState(false);
 
-  const loadData = useCallback(async () => {
+  // Save modal
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [bkName, setBkName] = useState('');
+  const [bkNotes, setBkNotes] = useState('');
+  const [bkType, setBkType] = useState('operational');
+  const [bkEncrypt, setBkEncrypt] = useState(false);
+  const [bkPassword, setBkPassword] = useState('');
+  const [lastBackup, setLastBackup] = useState(null); // { code, fileName, size }
+
+  // Reset modal
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetMode, setResetMode] = useState('transaction');
+  const [resetSequences, setResetSequences] = useState(true);
+  const [skipBackup, setSkipBackup] = useState(false);
+  const [resetPhrase, setResetPhrase] = useState('');
+  const [resetAck, setResetAck] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+
+  // Stored-backup restore modal
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreId, setRestoreId] = useState('');
+  const [restoreMode, setRestoreMode] = useState('operational');
+  const [restorePhrase, setRestorePhrase] = useState('');
+  const [restoreAck, setRestoreAck] = useState(false);
+
+  // File restore modal
+  const [fileOpen, setFileOpen] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null); // { file_uri, file_name, file_size }
+  const [preview, setPreview] = useState(null);
+  const [validateError, setValidateError] = useState('');
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [filePassword, setFilePassword] = useState('');
+  const [fileMode, setFileMode] = useState('operational');
+  const [filePhrase, setFilePhrase] = useState('');
+  const [fileAck, setFileAck] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Download permission is enforced by admin role on backend; DatabaseBackup RLS is admin-only.
+  const downloadAllowed = true;
+
+  const loadBackups = useCallback(async () => {
     setLoading(true);
     try {
-      const [items, balances, prods, brs, mats, matBal, boxMats] = await Promise.all([
-        base44.entities.ExciseOrder.list('-created_date', 100),
-        getAllStockBalances('product'),
-        base44.entities.Product.filter({ is_active: true }),
-        base44.entities.Brand.filter({ is_active: true }),
-        base44.entities.Material.filter({ material_type: 'EXCISE', is_active: true }, '-created_date', 500),
-        getAllStockBalances('material'),
-        base44.entities.Material.filter({ material_type: 'PACKAGING', is_active: true }, '-created_date', 500),
-      ]);
-      setData(items);
-      setBelumCukaiStock(balances.filter(b => b.inventory_status === 'UNEXCISED' && b.quantity > 0));
-      setProducts(prods); setBrands(brs);
-      setExciseMaterials(mats);
-      setBoxMaterials(boxMats);
-      const sm = {}; matBal.forEach(b => { sm[b.item_id] = (sm[b.item_id] || 0) + (b.available_quantity || 0); });
-      setExciseStocks(sm);
-    } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
-    finally { setLoading(false); }
-  }, [toast]);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  const exciseTotalRequired = (Number(form.quantity) || 0) * (Number(form.excise_quantity_per_unit) || 0);
-  const boxTotalRequired = (Number(form.quantity) || 0) * (Number(form.box_quantity_per_unit) || 0);
-
-  const openAdd = () => {
-    setForm({ product_id: '', stock_id: '', brand_id: '', bottle_size: '', quantity: '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '', document_number: '', excise_reference_number: '', excise_date: new Date().toISOString().slice(0, 10), operator: '', notes: '', use_box: false, box_material_id: '', box_material_name: '', box_quantity_per_unit: '1' });
-    setModalOpen(true);
-  };
-
-  const onStockChange = (v) => {
-    const stock = belumCukaiStock.find(s => s.id === v);
-    const prod = products.find(p => p.id === stock?.item_id);
-    setForm(f => ({ ...f, stock_id: v, product_id: stock?.item_id || '', brand_id: prod?.brand_id || '', bottle_size: prod?.bottle_size ?? '', excise_material_id: '', excise_material_name: '', excise_quantity_per_unit: '1', excise_label_type: '' }));
-  };
-
-  const onCukaiChange = (materialId) => {
-    const m = exciseMaterials.find(x => x.id === materialId);
-    setForm(f => ({ ...f, excise_material_id: materialId, excise_material_name: m?.name || '', excise_label_type: m?.name || '' }));
-  };
-
-  const handleSubmit = async () => {
-    if (!form.product_id || !form.quantity || !form.operator) { toast({ variant: 'destructive', title: 'Produk, jumlah, dan operator wajib diisi' }); return; }
-    const stockItem = belumCukaiStock.find(s => s.id === form.stock_id);
-    if (stockItem && Number(form.quantity) > stockItem.available_quantity) {
-      toast({ variant: 'destructive', title: 'Jumlah melebihi stok belum cukai', description: `Tersedia: ${stockItem.available_quantity}` }); return;
+      const rows = await base44.entities.DatabaseBackup.list('-created_at', 200);
+      setBackups(rows || []);
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Gagal memuat backup', description: e.message });
     }
-    if (form.excise_material_id) {
-      const stk = exciseStocks[form.excise_material_id] || 0;
-      if (exciseTotalRequired > stk) {
-        toast({ variant: 'destructive', title: 'Stok pita cukai tidak cukup', description: `Butuh ${exciseTotalRequired}, stok ${stk}` }); return;
-      }
-    }
-    if (form.use_box && form.box_material_id) {
-      const stk = exciseStocks[form.box_material_id] || 0;
-      if (boxTotalRequired > stk) {
-        toast({ variant: 'destructive', title: 'Stok box tidak cukup', description: `Butuh ${boxTotalRequired}, stok ${stk}` }); return;
-      }
-    }
-    setSubmitting(true);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadBackups(); }, [loadBackups]);
+
+  const fmtSize = (b) => { if (!b) return '-'; if (b < 1024) return b + ' B'; if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'; return (b / 1048576).toFixed(2) + ' MB'; };
+  const fmtDate = (d) => (d ? new Date(d).toLocaleString('id-ID') : '-');
+  const statusColor = { COMPLETED: 'bg-emerald-100 text-emerald-700', CREATING: 'bg-amber-100 text-amber-700', FAILED: 'bg-red-100 text-red-700', DELETED: 'bg-slate-100 text-slate-500' };
+  const completedBackups = backups.filter((b) => b.status === 'COMPLETED');
+
+  const doSave = async () => {
+    if (bkEncrypt && !bkPassword) { toast({ variant: 'destructive', title: 'Masukkan password enkripsi' }); return; }
+    setBusy(true);
     try {
-      const product = products.find(p => p.id === form.product_id);
-      const brand = brands.find(b => b.id === form.brand_id);
-      const excNumber = await generateOrderNumber('EXC', 'ExciseOrder');
-      const excise = await base44.entities.ExciseOrder.create({
-        excise_number: excNumber,
-        brand_id: form.brand_id, brand_name: brand?.name || '',
-        product_id: form.product_id, product_name: product?.name || '',
-        batch_number: stockItem?.batch_number || '',
-        bottle_size: Number(form.bottle_size), quantity: Number(form.quantity),
-        excise_label_type: form.excise_label_type, document_number: form.document_number,
-        excise_reference_number: form.excise_reference_number,
-        excise_material_id: form.excise_material_id || '', excise_material_name: form.excise_material_name || '',
-        excise_quantity_per_unit: Number(form.excise_quantity_per_unit) || 1, excise_total_required: form.excise_material_id ? exciseTotalRequired : 0,
-        use_box: !!form.use_box,
-        box_material_id: form.use_box ? form.box_material_id : '',
-        box_material_name: form.use_box ? form.box_material_name : '',
-        box_quantity_per_unit: form.use_box ? (Number(form.box_quantity_per_unit) || 1) : 0,
-        box_total_required: form.use_box && form.box_material_id ? boxTotalRequired : 0,
-        excise_date: form.excise_date, operator: form.operator,
-        status: 'siap_jual', notes: form.notes,
+      const res = await base44.functions.invoke('databaseBackup', {
+        name: bkName, notes: bkNotes, backup_type: bkType, encrypt: bkEncrypt, password: bkEncrypt ? bkPassword : undefined,
       });
-      // PATCH C4: Ambil HPP Labeling per botol dari StockLedger snapshot (hasil Patch C3)
-      const labelingLedgers = await base44.entities.StockLedger.filter({
-        batch_id: stockItem?.batch_id || '', item_id: form.product_id, inventory_status: 'UNEXCISED', transaction_type: 'labeling_output',
-      });
-      const hppLabelingPerBottle = Number(labelingLedgers[0]?.unit_cost) || 0;
-      // PATCH C4: Hitung cost basis Excise + Packaging
-      const quantityProcessed = Number(form.quantity);
-      const previousProductCost = quantityProcessed * hppLabelingPerBottle;
-      let exciseCost = 0;
-      let packagingCost = 0;
-      await recordStockMovement({
-        item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
-        batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
-        inventory_status: 'UNEXCISED', quantity_out: Number(form.quantity), unit: 'unit', unit_cost: hppLabelingPerBottle,
-        transaction_type: 'excise_consumption', transaction_number: excNumber,
-        reference_type: 'excise', reference_id: excise.id, notes: `Proses cukai ${excNumber}`,
-      });
-      if (form.excise_material_id) {
-        const mat = exciseMaterials.find(m => m.id === form.excise_material_id);
-        const exciseHbt = Number(mat?.last_purchase_price) || 0;
-        exciseCost = exciseTotalRequired * exciseHbt;
-        await recordStockMovement({
-          item_type: 'material', item_id: form.excise_material_id, item_name: form.excise_material_name, item_code: mat?.code || '',
-          inventory_status: '', quantity_out: exciseTotalRequired, unit: mat?.unit || 'unit', unit_cost: exciseHbt,
-          transaction_type: 'excise_consumption', transaction_number: excNumber,
-          reference_type: 'excise', reference_id: excise.id, notes: `Pita cukai untuk ${excNumber}`,
-        });
+      const backup = res.data?.backup;
+      toast({ title: 'Backup berhasil dibuat', description: backup?.backup_code });
+      setLastBackup({ code: backup?.backup_code, fileName: backup?.file_name, size: backup?.file_size });
+      // Auto-trigger download
+      try {
+        const dl = await base44.functions.invoke('databaseDownloadBackup', { backup_id: backup.id });
+        await triggerDownload(dl.data.signed_url, dl.data.file_name);
+        toast({ title: 'File terunduh', description: dl.data.file_name });
+      } catch (e) {
+        toast({ variant: 'destructive', title: 'Gagal mengunduh', description: e.response?.data?.error || e.message });
       }
-      if (form.use_box && form.box_material_id) {
-        const boxMat = boxMaterials.find(m => m.id === form.box_material_id);
-        const packagingHbt = Number(boxMat?.last_purchase_price) || 0;
-        packagingCost = boxTotalRequired * packagingHbt;
-        await recordStockMovement({
-          item_type: 'material', item_id: form.box_material_id, item_name: form.box_material_name, item_code: boxMat?.code || '',
-          inventory_status: '', quantity_out: boxTotalRequired, unit: boxMat?.unit || 'pcs', unit_cost: packagingHbt,
-          transaction_type: 'excise_consumption', transaction_number: excNumber,
-          reference_type: 'excise', reference_id: excise.id, notes: `Box kemasan untuk ${excNumber}`,
-        });
-      }
-      const totalFinalCost = previousProductCost + exciseCost + packagingCost;
-      const hppFinalPerBottle = quantityProcessed > 0 ? totalFinalCost / quantityProcessed : 0;
-      const safeHppFinal = Number.isFinite(hppFinalPerBottle) ? hppFinalPerBottle : 0;
-      await recordStockMovement({
-        item_type: 'product', item_id: form.product_id, item_name: product?.name || '', item_code: product?.code || '',
-        batch_id: stockItem?.batch_id || '', batch_number: stockItem?.batch_number || '',
-        inventory_status: 'READY_FOR_SALE', quantity_in: Number(form.quantity), unit: 'unit', unit_cost: safeHppFinal,
-        transaction_type: 'excise_output', transaction_number: excNumber,
-        reference_type: 'excise', reference_id: excise.id, notes: `Barang siap jual`,
-      });
-      await createAuditLog({ module: 'Cukai', action: 'Selesai', entity_type: 'ExciseOrder', entity_id: excise.id, reference_number: excNumber });
-      toast({ title: 'Proses cukai selesai', description: excNumber });
-      setModalOpen(false); loadData();
-    } catch (e) { toast({ variant: 'destructive', title: 'Gagal menyimpan', description: e.message }); }
-    finally { setSubmitting(false); }
+      loadBackups();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Backup gagal', description: e.response?.data?.error || e.message });
+    }
+    setBusy(false);
   };
 
-  const exportExcisePDF = async (row) => {
+  const downloadBackup = async (b) => {
+    setBusy(true);
     try {
-      exportDocumentToPDF({
-        title: 'Dokumen Proses Cukai',
-        docNumber: row.excise_number, docDate: row.excise_date,
-        partyLabel: 'Produk', party: { name: row.product_name },
-        infoLines: [
-          { label: 'Merk', value: row.brand_name || '-' },
-          { label: 'No. Batch', value: row.batch_number || '-' },
-          { label: 'Ukuran', value: row.bottle_size ? `${row.bottle_size} ml` : '-' },
-          { label: 'Pita Cukai', value: row.excise_material_name || row.excise_label_type || '-' },
-          { label: 'Box', value: row.use_box ? `${row.box_material_name || '-'} (${row.box_total_required || 0})` : 'Tanpa Box' },
-          { label: 'No. Dokumen', value: row.document_number || '-' },
-          { label: 'Ref. Cukai', value: row.excise_reference_number || '-' },
-          { label: 'Jumlah', value: row.quantity },
-          { label: 'Operator', value: row.operator || '-' },
-          { label: 'Status', value: row.status },
-        ],
-        itemColumns: [{ key: 'desc', header: 'Keterangan' }],
-        itemRows: [{ desc: `Proses cukai ${row.quantity} unit ${row.product_name} (batch ${row.batch_number || '-'}) — ref ${row.excise_reference_number || '-'}` }],
-        totals: [{ label: 'Jumlah Unit', value: row.quantity, bold: true }],
-        notes: row.notes,
-        signatures: [{ label: 'Operator,', name: row.operator || '' }],
-        fileName: `cukai-${row.excise_number}.pdf`,
-      });
-    } catch { toast({ variant: 'destructive', title: 'Gagal membuat PDF' }); }
+      const dl = await base44.functions.invoke('databaseDownloadBackup', { backup_id: b.id });
+      await triggerDownload(dl.data.signed_url, dl.data.file_name);
+      toast({ title: 'File terunduh', description: dl.data.file_name });
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Gagal mengunduh', description: e.response?.data?.error || e.message });
+    }
+    setBusy(false);
   };
 
-  const columns = [
-    { key: 'excise_number', header: 'No. Cukai', sortable: true, className: 'font-mono font-medium' },
-    { key: 'product_name', header: 'Produk', sortable: true, className: 'font-medium' },
-    { key: 'brand_name', header: 'Merk', render: (row) => row.brand_name || '—' },
-    { key: 'batch_number', header: 'Batch', className: 'font-mono' },
-    { key: 'quantity', header: 'Jumlah', render: (row) => <span className="tabular-nums">{row.quantity}</span> },
-    { key: 'excise_material_name', header: 'Pita Cukai', render: (row) => row.excise_material_name || row.excise_label_type || '—' },
-    { key: 'box_material_name', header: 'Box', render: (row) => row.use_box ? (row.box_material_name || '—') : <span className="text-muted-foreground">—</span> },
-    { key: 'excise_reference_number', header: 'Ref. Cukai', render: (row) => row.excise_reference_number || '—' },
-    { key: 'excise_date', header: 'Tanggal', sortable: true },
-    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-    { key: 'actions', header: '', width: '56px', render: (row) => <PdfButton onExport={() => exportExcisePDF(row)} perm="excise" iconOnly label="Cetak Dokumen" /> },
-  ];
+  const reDownloadLast = async () => {
+    if (!lastBackup) return;
+    const rec = backups.find((b) => b.backup_code === lastBackup.code);
+    if (rec) await downloadBackup(rec);
+  };
+
+  const doReset = async () => {
+    if (resetPhrase !== RESET_CONFIRM_PHRASE) { toast({ variant: 'destructive', title: 'Kalimat konfirmasi belum sesuai' }); return; }
+    if (!resetAck) { toast({ variant: 'destructive', title: 'Centang pemahaman risiko' }); return; }
+    if (!resetPassword) { toast({ variant: 'destructive', title: 'Masukkan password' }); return; }
+    setBusy(true);
+    try {
+      const res = await base44.functions.invoke('databaseReset', { mode: resetMode, resetSequences, skipBackup, confirm: resetPhrase });
+      toast({ title: 'Reset selesai', description: `Mode ${resetMode} • ${res.data?.sequencesReset || 0} sequence direset` });
+      setResetOpen(false); setResetPhrase(''); setResetAck(false); setResetPassword('');
+      loadBackups();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Reset gagal', description: e.response?.data?.error || e.message });
+    }
+    setBusy(false);
+  };
+
+  const doRestore = async () => {
+    if (!restoreId) { toast({ variant: 'destructive', title: 'Pilih backup' }); return; }
+    if (restorePhrase !== RESTORE_CONFIRM_PHRASE) { toast({ variant: 'destructive', title: 'Kalimat konfirmasi belum sesuai' }); return; }
+    if (!restoreAck) { toast({ variant: 'destructive', title: 'Centang pemahaman risiko' }); return; }
+    setBusy(true);
+    try {
+      const res = await base44.functions.invoke('databaseRestore', { backup_id: restoreId, mode: restoreMode, confirm: restorePhrase, autoBackup: true });
+      toast({ title: 'Restore selesai', description: res.data?.backup_code });
+      setRestoreOpen(false); setRestorePhrase(''); setRestoreAck(false); setRestoreId('');
+      loadBackups();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Restore gagal', description: e.response?.data?.error || e.message });
+    }
+    setBusy(false);
+  };
+
+  const resetFileState = () => {
+    setUploadedFile(null); setPreview(null); setValidateError(''); setNeedsPassword(false); setFilePassword(''); setFilePhrase(''); setFileAck(false);
+  };
+
+  const onPickFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_RESTORE_FILE_SIZE) {
+      toast({ variant: 'destructive', title: 'File terlalu besar', description: `Maksimum ${MAX_RESTORE_FILE_SIZE / 1048576} MB` });
+      return;
+    }
+    setBusy(true);
+    resetFileState();
+    try {
+      const up = await base44.integrations.Core.UploadPrivateFile({ file });
+      setUploadedFile({ file_uri: up.file_uri, file_name: file.name, file_size: file.size });
+      await validateFile(up.file_uri, file.name, file.size, undefined);
+    } catch (e) {
+      setValidateError(e.response?.data?.error || e.message || 'Gagal mengupload file');
+    }
+    setBusy(false);
+  };
+
+  const validateFile = async (file_uri, file_name, file_size, password) => {
+    setValidateError(''); setPreview(null); setNeedsPassword(false);
+    try {
+      const res = await base44.functions.invoke('databaseValidateRestoreFile', { file_uri, file_name, file_size, password });
+      setPreview(res.data?.preview);
+      setNeedsPassword(false);
+    } catch (e) {
+      const data = e.response?.data;
+      if (data?.needsPassword) { setNeedsPassword(true); setValidateError(data.error || 'File terenkripsi, masukkan password'); }
+      else { setValidateError(data?.error || e.message || 'Validasi gagal'); setNeedsPassword(false); }
+    }
+  };
+
+  const revalidateWithPassword = async () => {
+    if (!uploadedFile || !filePassword) { toast({ variant: 'destructive', title: 'Masukkan password' }); return; }
+    setBusy(true);
+    await validateFile(uploadedFile.file_uri, uploadedFile.file_name, uploadedFile.file_size, filePassword);
+    setBusy(false);
+  };
+
+  const doFileRestore = async () => {
+    if (!uploadedFile) { toast({ variant: 'destructive', title: 'Pilih file backup' }); return; }
+    if (!preview) { toast({ variant: 'destructive', title: 'File belum tervalidasi' }); return; }
+    if (filePhrase !== RESTORE_CONFIRM_PHRASE) { toast({ variant: 'destructive', title: 'Kalimat konfirmasi belum sesuai' }); return; }
+    if (!fileAck) { toast({ variant: 'destructive', title: 'Centang pemahaman risiko' }); return; }
+    setBusy(true);
+    try {
+      const res = await base44.functions.invoke('databaseRestoreFromFile', {
+        file_uri: uploadedFile.file_uri, file_name: uploadedFile.file_name, mode: fileMode, confirm: filePhrase, autoBackup: true, password: needsPassword ? filePassword : undefined,
+      });
+      toast({ title: 'Restore dari file selesai', description: res.data?.backup_code || '' });
+      setFileOpen(false); resetFileState();
+      loadBackups();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Restore gagal', description: e.response?.data?.error || e.message });
+    }
+    setBusy(false);
+  };
+
+  const deleteBackup = async (b) => {
+    if (!window.confirm(`Hapus record backup ${b.backup_code}? (metadata ditandai DELETED; file storage tetap)`)) return;
+    try {
+      await base44.entities.DatabaseBackup.update(b.id, { status: 'DELETED' });
+      loadBackups();
+    } catch (e) { toast({ variant: 'destructive', title: 'Gagal', description: e.message }); }
+  };
 
   return (
-    <div className="p-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Proses Cukai" description="Proses pita cukai untuk barang belum cukai → siap jual. Pilih pita cukai dari stok."
-        actions={<Button onClick={openAdd} size="sm" className="gap-1.5"><Plus className="w-4 h-4" /> Proses Cukai Baru</Button>} />
-      <DataTable columns={columns} data={data} loading={loading} emptyMessage="Belum ada proses cukai" searchKeys={['excise_number', 'product_name', 'batch_number']} searchPlaceholder="Cari proses cukai..." />
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+      <PageHeader title="Database Management" description={`Environment: ${APP_ENVIRONMENT.toUpperCase()} • Khusus Administrator`} />
 
-      <FormModal open={modalOpen} onClose={() => setModalOpen(false)} title="Proses Cukai Baru" onSubmit={handleSubmit} submitting={submitting} submitLabel="Proses Cukai" size="lg">
-        <div>
-          <Label className="text-[12.5px] mb-1">Produk (Belum Cukai) *</Label>
-          <Select value={form.stock_id} onValueChange={onStockChange}>
-            <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih produk belum cukai" /></SelectTrigger>
-            <SelectContent>
-              {belumCukaiStock.map(s => {
-                const p = products.find(p => p.id === s.item_id);
-                return <SelectItem key={s.id} value={s.id}>{getInventoryDisplayName(p?.name || s.item_name, 'UNEXCISED')} ({s.available_quantity} unit){s.batch_number ? ` · ${s.batch_number}` : ''}</SelectItem>;
-              })}
-            </SelectContent>
-          </Select>
+      {IS_PRODUCTION && (
+        <div className="mb-4 bg-red-50 border border-red-300 rounded-lg px-4 py-3 text-[13px] text-red-700 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0" /> Reset &amp; Restore dinonaktifkan pada environment Production. Backup &amp; Download tetap tersedia.
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><Label className="text-[12.5px] mb-1">Merk</Label><Input value={brands.find(b => b.id === form.brand_id)?.name || ''} disabled className="h-9 text-[13px] bg-muted/40" /></div>
-          <div><Label className="text-[12.5px] mb-1">Ukuran Botol (ml)</Label><NumberInput value={form.bottle_size} onChange={v => setForm({ ...form, bottle_size: v })} allowDecimal maxDecimals={1} min={0} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Jumlah *</Label><NumberInput value={form.quantity} onChange={v => setForm({ ...form, quantity: v })} allowDecimal={false} min={0} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Tanggal Proses</Label><Input type="date" value={form.excise_date} onChange={e => setForm({ ...form, excise_date: e.target.value })} className="h-9 text-[13px]" /></div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-white border rounded-lg p-4 flex flex-col">
+          <div className="flex items-center gap-2 mb-2"><Save className="w-4 h-4 text-primary" /><h3 className="font-semibold text-[14px]">Save &amp; Download Backup</h3></div>
+          <p className="text-[12px] text-muted-foreground mb-3 flex-1">Buat backup database lalu unduh file ke komputer / HP. Disimpan juga di server dengan checksum SHA-256.</p>
+          <Button onClick={() => { setLastBackup(null); setSaveOpen(true); }} className="w-full"><Save className="w-4 h-4" /> Save Database</Button>
         </div>
-        <div>
-          <Label className="text-[12.5px] mb-1">Pita Cukai (Tipe Pita Cukai)</Label>
-          <Select value={form.excise_material_id} onValueChange={onCukaiChange}>
-            <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih pita cukai dari stok" /></SelectTrigger>
-            <SelectContent>
-              {exciseMaterials.map(m => {
-                const stk = exciseStocks[m.id] || 0;
-                return <SelectItem key={m.id} value={m.id} disabled={stk <= 0}>{m.name} · Stok {stk} {m.unit || 'pcs'}</SelectItem>;
-              })}
-            </SelectContent>
-          </Select>
-          {exciseMaterials.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada bahan tipe Pita Cukai (EXCISE). Tambahkan di Master Bahan (Tipe: Cukai/Excise). Proses cukai tetap bisa jalan tanpa konsumsi stok pita.</p>}
+        <div className="bg-white border rounded-lg p-4 flex flex-col">
+          <div className="flex items-center gap-2 mb-2"><FileUp className="w-4 h-4 text-primary" /><h3 className="font-semibold text-[14px]">Restore from Backup File</h3></div>
+          <p className="text-[12px] text-muted-foreground mb-3 flex-1">Pilih file backup (.json) dari local drive. Divalidasi sebelum restore dijalankan.</p>
+          <Button variant="outline" onClick={() => { resetFileState(); setFileOpen(true); }} className="w-full"><FileUp className="w-4 h-4" /> Pilih File Backup</Button>
         </div>
-        <div className="rounded-md border border-border p-3 bg-muted/20">
-          <div className="flex items-center gap-2 mb-2">
-            <Switch checked={form.use_box} onCheckedChange={v => setForm(f => ({ ...f, use_box: v, box_material_id: v ? f.box_material_id : '', box_material_name: v ? f.box_material_name : '' }))} />
-            <Label className="text-[12.5px]">Proses Lanjutan: Gunakan Box (Kemasan Luar)</Label>
+        <div className="bg-white border rounded-lg p-4 flex flex-col">
+          <div className="flex items-center gap-2 mb-2"><Upload className="w-4 h-4 text-primary" /><h3 className="font-semibold text-[14px]">Restore dari Backup Tersimpan</h3></div>
+          <p className="text-[12px] text-muted-foreground mb-3 flex-1">Kembalikan database dari backup yang ada di server (lihat daftar di bawah).</p>
+          <Button variant="outline" onClick={() => setRestoreOpen(true)} className="w-full"><Upload className="w-4 h-4" /> Lihat Backup Tersimpan</Button>
+        </div>
+        <div className="bg-white border border-red-200 rounded-lg p-4 flex flex-col">
+          <div className="flex items-center gap-2 mb-2"><RotateCcw className="w-4 h-4 text-red-600" /><h3 className="font-semibold text-[14px] text-red-700">Reset Development Data</h3></div>
+          <p className="text-[12px] text-muted-foreground mb-3 flex-1">Hapus data test dengan tetap mempertahankan user dan hak akses.</p>
+          <Button variant="destructive" disabled={IS_PRODUCTION} onClick={() => setResetOpen(true)} className="w-full"><RotateCcw className="w-4 h-4" /> Reset Data</Button>
+        </div>
+      </div>
+
+      <div className="bg-white border rounded-lg">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <h3 className="font-semibold text-[14px]">Daftar Backup</h3>
+          <Button variant="ghost" size="sm" onClick={loadBackups} disabled={loading}>Refresh</Button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12.5px]">
+            <thead className="bg-muted/50 text-muted-foreground">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium">Kode</th>
+                <th className="text-left px-3 py-2 font-medium">Nama</th>
+                <th className="text-left px-3 py-2 font-medium">Tanggal</th>
+                <th className="text-left px-3 py-2 font-medium">Dibuat Oleh</th>
+                <th className="text-left px-3 py-2 font-medium">Jenis</th>
+                <th className="text-right px-3 py-2 font-medium">Ukuran</th>
+                <th className="text-right px-3 py-2 font-medium">Record</th>
+                <th className="text-left px-3 py-2 font-medium">Status</th>
+                <th className="text-left px-3 py-2 font-medium">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">Memuat...</td></tr>}
+              {!loading && backups.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">Belum ada backup</td></tr>}
+              {!loading && backups.map((b) => (
+                <tr key={b.id} className="border-t hover:bg-muted/30">
+                  <td className="px-3 py-2 font-mono">{b.backup_code}{b.encrypted && <Lock className="w-3 h-3 inline ml-1 text-amber-600" />}</td>
+                  <td className="px-3 py-2">{b.backup_name}</td>
+                  <td className="px-3 py-2">{fmtDate(b.created_at)}</td>
+                  <td className="px-3 py-2">{b.created_by}</td>
+                  <td className="px-3 py-2"><span className="px-2 py-0.5 rounded bg-muted text-[11px]">{b.backup_type === 'full' ? 'Full' : 'Operational'}</span></td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtSize(b.file_size)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{b.record_count}</td>
+                  <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-[11px] ${statusColor[b.status] || 'bg-slate-100'}`}>{b.status}</span></td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" disabled={b.status !== 'COMPLETED' || !downloadAllowed} onClick={() => downloadBackup(b)} title="Download ke local"><Download className="w-3.5 h-3.5" /></Button>
+                      <Button size="sm" variant="ghost" disabled={b.status !== 'COMPLETED' || IS_PRODUCTION} onClick={() => { setRestoreId(b.id); setRestoreOpen(true); }} title="Restore"><Upload className="w-3.5 h-3.5" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => deleteBackup(b)} title="Hapus"><Trash2 className="w-3.5 h-3.5" /></Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* SAVE MODAL */}
+      <FormModal open={saveOpen} onClose={() => setSaveOpen(false)} title="Save & Download Backup" submitLabel={lastBackup ? 'Selesai' : 'Buat & Download Backup'} submitting={busy} onSubmit={lastBackup ? () => { setSaveOpen(false); setLastBackup(null); setBkName(''); setBkNotes(''); setBkType('operational'); setBkEncrypt(false); setBkPassword(''); } : doSave} size="md">
+        {lastBackup ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-emerald-700"><CheckCircle2 className="w-5 h-5" /><span className="font-semibold text-[14px]">Backup berhasil dibuat</span></div>
+            <div className="bg-muted/40 rounded p-3 text-[12.5px] space-y-1">
+              <div><span className="text-muted-foreground">Backup:</span> <span className="font-mono">{lastBackup.code}</span></div>
+              <div><span className="text-muted-foreground">File:</span> <span className="font-mono break-all">{lastBackup.fileName}</span></div>
+              <div><span className="text-muted-foreground">Ukuran:</span> {fmtSize(lastBackup.size)}</div>
+            </div>
+            <Button variant="outline" className="w-full" onClick={reDownloadLast}><Download className="w-4 h-4" /> Download Lagi</Button>
           </div>
-          {form.use_box && (
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <Label className="text-[12.5px] mb-1">Box (Kemasan)</Label>
-                <Select value={form.box_material_id} onValueChange={v => { const m = boxMaterials.find(x => x.id === v); setForm(f => ({ ...f, box_material_id: v, box_material_name: m?.name || '' })); }}>
-                  <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Pilih box dari stok" /></SelectTrigger>
-                  <SelectContent>
-                    {boxMaterials.map(m => {
-                      const stk = exciseStocks[m.id] || 0;
-                      return <SelectItem key={m.id} value={m.id} disabled={stk <= 0}>{m.name} · Stok {stk} {m.unit || 'pcs'}</SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
-                {boxMaterials.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada bahan tipe Kemasan (PACKAGING) di Master Bahan.</p>}
+        ) : (
+          <div className="space-y-3">
+            <div><Label>Nama Backup</Label><Input value={bkName} onChange={(e) => setBkName(e.target.value)} placeholder="Opsional — otomatis jika kosong" /></div>
+            <div><Label>Catatan</Label><Textarea value={bkNotes} onChange={(e) => setBkNotes(e.target.value)} rows={2} placeholder="Alasan backup..." /></div>
+            <div>
+              <Label>Jenis Backup</Label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button type="button" onClick={() => setBkType('operational')} className={`border rounded px-3 py-2 text-left text-[12px] ${bkType === 'operational' ? 'border-primary bg-primary/5' : 'border-input'}`}>
+                  <div className="font-semibold">Operational</div>
+                  <div className="text-muted-foreground text-[11px]">Master, resep, transaksi, stok, HPP, batch. Tanpa user/auth. (Direkomendasikan)</div>
+                </button>
+                <button type="button" onClick={() => setBkType('full')} className={`border rounded px-3 py-2 text-left text-[12px] ${bkType === 'full' ? 'border-primary bg-primary/5' : 'border-input'}`}>
+                  <div className="font-semibold">Full</div>
+                  <div className="text-muted-foreground text-[11px]">Operational + data User (export-only, tidak di-restore).</div>
+                </button>
               </div>
-              <div><Label className="text-[12.5px] mb-1">Per Unit</Label><NumberInput value={form.box_quantity_per_unit} onChange={v => setForm({ ...form, box_quantity_per_unit: v })} allowDecimal maxDecimals={4} min={0} className="h-9 text-[13px]" /></div>
-              <div className="col-span-3 text-[11.5px] text-muted-foreground">Total butuh box: <span className="font-semibold tabular-nums">{form.box_material_id ? boxTotalRequired : '—'}</span> {form.box_material_id ? (boxMaterials.find(m => m.id === form.box_material_id)?.unit || 'pcs') : ''}</div>
+            </div>
+            <div className="flex items-center justify-between rounded border px-3 py-2">
+              <div><div className="text-[13px] font-medium flex items-center gap-1"><Lock className="w-3.5 h-3.5" /> Encrypt Backup File</div><div className="text-[11px] text-muted-foreground">Enkripsi AES-256. Password tidak disimpan.</div></div>
+              <Switch checked={bkEncrypt} onCheckedChange={setBkEncrypt} />
+            </div>
+            {bkEncrypt && (
+              <div><Label>Password Enkripsi</Label><Input type="password" value={bkPassword} onChange={(e) => setBkPassword(e.target.value)} placeholder="Password untuk membuka file backup" /></div>
+            )}
+            <p className="text-[11px] text-muted-foreground">Backup disimpan di private storage + langsung diunduh ke perangkat Anda. Checksum SHA-256 menjamin integritas.</p>
+          </div>
+        )}
+      </FormModal>
+
+      {/* RESET MODAL */}
+      <FormModal open={resetOpen} onClose={() => setResetOpen(false)} title="Reset Development Data" submitLabel="Jalankan Reset" submitting={busy} onSubmit={doReset} size="md">
+        <div className="space-y-3">
+          <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-[12px] text-red-700">
+            ⚠ Proses ini menghapus data operasional dan transaksi secara permanen. Data pengguna, role, dan hak akses tetap dipertahankan.
+          </div>
+          <div>
+            <Label>Mode Reset</Label>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <button type="button" onClick={() => setResetMode('transaction')} className={`border rounded px-3 py-2 text-left text-[12px] ${resetMode === 'transaction' ? 'border-primary bg-primary/5' : 'border-input'}`}>
+                <div className="font-semibold">Transaksi Saja</div>
+                <div className="text-muted-foreground text-[11px]">Hapus transaksi + stok. Master & resep tetap.</div>
+              </button>
+              <button type="button" onClick={() => setResetMode('full')} className={`border rounded px-3 py-2 text-left text-[12px] ${resetMode === 'full' ? 'border-primary bg-primary/5' : 'border-input'}`}>
+                <div className="font-semibold">Penuh Operasional</div>
+                <div className="text-muted-foreground text-[11px]">Hapus transaksi + master + resep + stok.</div>
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between"><Label>Reset nomor dokumen operasional</Label><Switch checked={resetSequences} onCheckedChange={setResetSequences} /></div>
+          <div className="flex items-center justify-between"><Label>Lanjut tanpa backup</Label><Switch checked={skipBackup} onCheckedChange={setSkipBackup} /></div>
+          {!skipBackup && <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">Disarankan buat backup terlebih dahulu (Save Database) sebelum reset.</p>}
+          <div><Label>Password (re-authentication)</Label><Input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Masukkan password Anda" /></div>
+          <div><Label>Ketik kalimat konfirmasi</Label><Input value={resetPhrase} onChange={(e) => setResetPhrase(e.target.value)} placeholder={RESET_CONFIRM_PHRASE} className="font-mono text-[12px]" /></div>
+          <label className="flex items-start gap-2 text-[12px]"><input type="checkbox" checked={resetAck} onChange={(e) => setResetAck(e.target.checked)} className="mt-0.5" /> Saya memahami bahwa data yang dihapus tidak dapat dipulihkan kecuali tersedia backup.</label>
+        </div>
+      </FormModal>
+
+      {/* STORED-RESTORE MODAL */}
+      <FormModal open={restoreOpen} onClose={() => setRestoreOpen(false)} title="Restore dari Backup Tersimpan" submitLabel="Jalankan Restore" submitting={busy} onSubmit={doRestore} size="md">
+        <div className="space-y-3">
+          <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[12px] text-amber-700">
+            Restore akan mengganti data operasional saat ini dengan data dari backup. User & hak akses tetap dipertahankan. Sistem membuat auto-backup otomatis sebelum restore.
+          </div>
+          <div>
+            <Label>Pilih Backup</Label>
+            <select value={restoreId} onChange={(e) => setRestoreId(e.target.value)} className="w-full h-9 border rounded px-2 text-[13px] bg-transparent">
+              <option value="">— Pilih —</option>
+              {completedBackups.map((b) => (<option key={b.id} value={b.id}>{b.backup_code} — {fmtDate(b.created_at)}</option>))}
+            </select>
+          </div>
+          <div><Label>Mode Restore</Label><div className="text-[12px] text-muted-foreground mt-1">Operational — Master+resep+transaksi+stok. User tetap (platform-managed).</div></div>
+          <div><Label>Ketik kalimat konfirmasi</Label><Input value={restorePhrase} onChange={(e) => setRestorePhrase(e.target.value)} placeholder={RESTORE_CONFIRM_PHRASE} className="font-mono text-[12px]" /></div>
+          <label className="flex items-start gap-2 text-[12px]"><input type="checkbox" checked={restoreAck} onChange={(e) => setRestoreAck(e.target.checked)} className="mt-0.5" /> Saya memahami data saat ini akan ditimpa oleh backup.</label>
+        </div>
+      </FormModal>
+
+      {/* FILE-RESTORE MODAL */}
+      <FormModal open={fileOpen} onClose={() => { setFileOpen(false); resetFileState(); }} title="Restore from Backup File" submitLabel="Jalankan Restore" submitting={busy} onSubmit={doFileRestore} size="md">
+        <div className="space-y-3">
+          <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[12px] text-amber-700">
+            Pilih file backup (.json) dari local drive. File divalidasi (manifest, checksum, schema) sebelum restore dijalankan.
+          </div>
+
+          <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden" onChange={onPickFile} />
+          <Button type="button" variant="outline" className="w-full" disabled={busy} onClick={() => fileInputRef.current?.click()}>
+            <FileUp className="w-4 h-4" /> {uploadedFile ? uploadedFile.file_name : 'Pilih File Backup (.json)'}
+          </Button>
+          {uploadedFile && <div className="text-[11px] text-muted-foreground">Ukuran: {fmtSize(uploadedFile.file_size)}</div>}
+
+          {needsPassword && (
+            <div className="space-y-1">
+              <Label>Password File (terenkripsi)</Label>
+              <div className="flex gap-2">
+                <Input type="password" value={filePassword} onChange={(e) => setFilePassword(e.target.value)} placeholder="Password backup" />
+                <Button type="button" variant="secondary" onClick={revalidateWithPassword} disabled={busy}>Validasi</Button>
+              </div>
             </div>
           )}
+
+          {validateError && (
+            <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-[12px] text-red-700 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> <span>{validateError}</span>
+            </div>
+          )}
+
+          {preview && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded p-3 space-y-1.5 text-[12px]">
+              <div className="flex items-center gap-1.5 text-emerald-700 font-semibold"><CheckCircle2 className="w-4 h-4" /> File tervalidasi</div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                <div><span className="text-muted-foreground">Aplikasi:</span> {preview.application}</div>
+                <div><span className="text-muted-foreground">Backup ID:</span> <span className="font-mono">{preview.backupId}</span></div>
+                <div><span className="text-muted-foreground">Tanggal:</span> {fmtDate(preview.createdAt)}</div>
+                <div><span className="text-muted-foreground">Dibuat oleh:</span> {preview.createdBy}</div>
+                <div><span className="text-muted-foreground">Versi App:</span> {preview.appVersion}</div>
+                <div><span className="text-muted-foreground">Schema:</span> {preview.schemaVersion} {preview.schemaOk ? '(kompatibel)' : <span className="text-red-600">(tidak kompatibel)</span>}</div>
+                <div><span className="text-muted-foreground">Jenis:</span> {preview.backupType === 'full' ? 'Full' : 'Operational'}</div>
+                <div><span className="text-muted-foreground">Terenkripsi:</span> {preview.encrypted ? 'Ya' : 'Tidak'}</div>
+                <div><span className="text-muted-foreground">Record:</span> {preview.recordCount}</div>
+                <div><span className="text-muted-foreground">Checksum:</span> <span className="text-emerald-700">{preview.checksumStatus}</span></div>
+                <div><span className="text-muted-foreground">Ukuran:</span> {fmtSize(preview.fileSize)}</div>
+                <div><span className="text-muted-foreground">Environment asal:</span> {preview.environment}</div>
+              </div>
+            </div>
+          )}
+
+          {preview && (
+            <>
+              <div><Label>Mode Restore</Label><div className="text-[12px] text-muted-foreground mt-1">Operational — Master+resep+transaksi+stok. User tetap (platform-managed).</div></div>
+              <div><Label>Ketik kalimat konfirmasi</Label><Input value={filePhrase} onChange={(e) => setFilePhrase(e.target.value)} placeholder={RESTORE_CONFIRM_PHRASE} className="font-mono text-[12px]" /></div>
+              <label className="flex items-start gap-2 text-[12px]"><input type="checkbox" checked={fileAck} onChange={(e) => setFileAck(e.target.checked)} className="mt-0.5" /> Saya memahami data saat ini akan ditimpa oleh backup ini.</label>
+            </>
+          )}
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div><Label className="text-[12.5px] mb-1">Per Unit</Label><NumberInput value={form.excise_quantity_per_unit} onChange={v => setForm({ ...form, excise_quantity_per_unit: v })} allowDecimal min={0} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Total Butuh</Label><Input value={form.excise_material_id ? (exciseTotalRequired || '') : '—'} disabled className="h-9 text-[13px] bg-muted/40" /></div>
-          <div><Label className="text-[12.5px] mb-1">Jenis Pita (label)</Label><Input value={form.excise_label_type} onChange={e => setForm({ ...form, excise_label_type: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Nomor Dokumen</Label><Input value={form.document_number} onChange={e => setForm({ ...form, document_number: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Nomor Referensi Cukai</Label><Input value={form.excise_reference_number} onChange={e => setForm({ ...form, excise_reference_number: e.target.value })} className="h-9 text-[13px]" /></div>
-          <div><Label className="text-[12.5px] mb-1">Operator *</Label><Input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} className="h-9 text-[13px]" /></div>
-        </div>
-        <div><Label className="text-[12.5px] mb-1">Catatan</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} className="text-[13px]" /></div>
       </FormModal>
     </div>
   );
