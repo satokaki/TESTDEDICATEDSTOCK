@@ -8,3167 +8,1714 @@ import StatusBadge from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Play, CheckCircle, AlertTriangle, X } from 'lucide-react';
-import { calculateRecipe } from '@/lib/recipeCalculator';
-import { calculatePremixQuantities } from '@/lib/premix';
-import { generateProductionNumber, generateBatchNumber } from '@/lib/sequence';
-import { recordStockMovement, getStockBalance, createAuditLog } from '@/lib/stockUtils';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Ban,
+  Eye,
+  Pencil,
+  Plus,
+  X,
+} from 'lucide-react';
+import { generateInvoiceNumber } from '@/lib/sequence';
+import {
+  recordStockMovement,
+  getAllStockBalances,
+  createAuditLog,
+} from '@/lib/stockUtils';
+import { getInventoryDisplayName } from '@/lib/inventoryDisplay';
 import NumberInput from '@/components/NumberInput';
 import PdfButton from '@/components/PdfButton';
 import { exportDocumentToPDF } from '@/lib/pdfExport';
-import { useAuth } from '@/lib/AuthContext';
-import { canSelectRecipeForProduction, isRecipeFormulaHidden } from '@/lib/permissions';
-import { Checkbox } from '@/components/ui/checkbox';
-import { formatNumber, formatCurrency } from '@/lib/format';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction,
-  AlertDialogCancel
-} from '@/components/ui/alert-dialog';
+import { formatCurrency as fmtMoney } from '@/lib/format';
 
+const emptyForm = () => ({
+  customer_id: '',
+  transaction_date: new Date().toISOString().slice(0, 10),
+  payment_method: 'cash',
+  payment_terms: 0,
+  warehouse_id: '',
+  sales_person: '',
+  notes: '',
+  items: [],
+});
 
-/* ==========================================================
-   PRODUCTION ORDER
-========================================================== */
-
-const PRODUCTION_ORDER = {
-  flavor: 10,
-  essence: 10,
-  sweetener: 20,
-  cooling: 30,
-  additive: 40,
-  premix: 40,
-  nicotine: 50,
-  vegetable_glycerin: 60,
-  vg: 60,
-  propylene_glycol: 70,
-  pg: 70,
-  lainnya: 80,
-};
-
-
-/* ==========================================================
-   PREMIX BUSINESS RULE
-========================================================== */
-
-/**
- * Material dengan material_type PREMIX
- * menggunakan rule produksi:
- *
- * 1 ml = 1 gram
- *
- * Rule ini hanya untuk kebutuhan produksi resep finished product.
- *
- * PG / VG RAW MATERIAL tetap menggunakan density.
- */
-const isOneToOnePremix = (material) => {
-  if (!material) return false;
-
-  return String(
-    material.material_type || ''
-  ).toUpperCase() === 'PREMIX';
-};
-
-
-export default function Production() {
-
+export default function Sales() {
   const { toast } = useToast();
-  const { user } = useAuth();
 
   const [data, setData] = useState([]);
-  const [recipes, setRecipes] = useState([]);
-  const [materials, setMaterials] = useState([]);
-  const [productionMaterials, setProductionMaterials] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [allStock, setAllStock] = useState([]);
+  const [siapJualStock, setSiapJualStock] = useState([]);
 
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(false);
-
-  const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [calcItems, setCalcItems] = useState([]);
-  const [stockCheck, setStockCheck] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [formMode, setFormMode] = useState('add');
+  const [editingSale, setEditingSale] = useState(null);
+  const [originalItems, setOriginalItems] = useState([]);
+  const [form, setForm] = useState(emptyForm());
 
-  const [checked, setChecked] = useState({});
-  const [gramasiTidakSinkron, setGramasiTidakSinkron] = useState(false);
-  const [gramasiMap, setGramasiMap] = useState({});
-
-  const [premixPreview, setPremixPreview] = useState(null);
-  const [premixConfirmOpen, setPremixConfirmOpen] = useState(false);
-
-  const [form, setForm] = useState({
-    recipe_id: '',
-    target_volume: 1000,
-    production_date: new Date().toISOString().slice(0, 10),
-    operator: '',
-    notes: ''
-  });
-
-
-  /* ==========================================================
-     LOAD DATA
-  ========================================================== */
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewSale, setViewSale] = useState(null);
+  const [viewItems, setViewItems] = useState([]);
+  const [viewLoading, setViewLoading] = useState(false);
 
   const loadData = useCallback(async () => {
-
     setLoading(true);
 
     try {
+      const [sales, custs, balances, prods, whs] = await Promise.all([
+        base44.entities.Sale.list('-created_date', 100),
+        base44.entities.Customer.filter({ is_active: true }),
+        getAllStockBalances('product'),
+        base44.entities.Product.filter({ is_active: true }),
+        base44.entities.Warehouse.filter({ is_active: true }),
+      ]);
 
-      const items =
-        await base44.entities.ProductionOrder.list(
-          '-created_date',
-          100
-        );
+      setData(sales || []);
+      setCustomers(custs || []);
+      setProducts(prods || []);
+      setWarehouses(whs || []);
+      setAllStock(balances || []);
 
-      setData(items);
-
-      const approved =
-        await base44.entities.Recipe.filter({
-          status: 'approved'
-        });
-
-      setRecipes(approved);
-
-      const mats =
-        await base44.entities.Material.filter({
-          is_active: true
-        });
-
-      setMaterials(mats);
-
+      setSiapJualStock(
+        (balances || []).filter(
+          b =>
+            b.inventory_status === 'READY_FOR_SALE' &&
+            Number(b.available_quantity ?? b.quantity) > 0
+        )
+      );
     } catch {
-
       toast({
         variant: 'destructive',
-        title: 'Gagal memuat data'
+        title: 'Gagal memuat data',
       });
-
     } finally {
-
       setLoading(false);
     }
-
   }, [toast]);
-
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-
-  /* ==========================================================
-     CALCULATE MATERIALS
-  ========================================================== */
-
-  const calculateMaterials = useCallback(
-    async (recipeId, targetValue) => {
-
-      if (!recipeId || !targetValue) return;
-
-
-      const recipe =
-        recipes.find(
-          r => r.id === recipeId
-        );
-
-      if (!recipe) return;
-
-
-      const ingredients =
-        await base44.entities.RecipeIngredient.filter({
-          recipe_id: recipeId
-        });
-
-
-      const matsById =
-        Object.fromEntries(
-          materials.map(
-            m => [m.id, m]
-          )
-        );
-
-
-      const isPremix =
-        recipe.recipe_type === 'PREMIX';
-
-
-      const basis =
-        recipe.calculation_basis || 'W_W';
-
-
-      const targetQty =
-        Number(targetValue);
-
-
-      let items = [];
-
-
-      /* ======================================================
-         PREMIX PRODUCTION
-      ====================================================== */
-
-      if (isPremix) {
-
-        const calc =
-          calculatePremixQuantities({
-            ingredients,
-            targetQuantity: targetQty,
-            basis,
-            materialsById: matsById
-          });
-
-
-        items =
-          calc.map(c => ({
-            material_id: c.material_id,
-            material_name: c.material_name,
-            material_type: c.material_type,
-
-            percentage:
-              Number(c.percentage || 0),
-
-            volumeMl:
-              Number(c.ml || 0),
-
-            gram:
-              Number(c.gram || 0)
-          }));
-
-      }
-
-
-      /* ======================================================
-         FINISHED PRODUCT
-      ====================================================== */
-
-      else {
-
-        const pgMaterial =
-          materials.find(
-            m =>
-              m.material_category ===
-              'propylene_glycol'
-          );
-
-
-        const vgMaterial =
-          materials.find(
-            m =>
-              m.material_category ===
-              'vegetable_glycerin'
-          );
-
-
-        const result =
-          calculateRecipe({
-
-            ingredients:
-              ingredients.map(
-                i => ({ ...i })
-              ),
-
-            targetVolume:
-              targetQty,
-
-            targetNicotine:
-              recipe.target_nicotine,
-
-            targetPG:
-              recipe.target_pg,
-
-            targetVG:
-              recipe.target_vg,
-
-            nicotineBaseStrength:
-              ingredients.find(
-                i =>
-                  i.material_type ===
-                  'nicotine'
-              )?.nicotine_strength || 100,
-
-            pgMaterial,
-            vgMaterial
-          });
-
-
-        /*
-         * ====================================================
-         * PATCH PREMIX 1:1
-         * ====================================================
-         *
-         * recipeCalculator lama dapat menghasilkan:
-         *
-         * gram = ml × density
-         *
-         * Untuk material PREMIX:
-         *
-         * gram HARUS = ml
-         *
-         * PG / VG tetap memakai hasil calculator lama.
-         */
-
-        items =
-          (result.items || []).map(item => {
-
-            const mat =
-              matsById[
-                item.material_id
-              ];
-
-
-            if (
-              isOneToOnePremix(mat)
-            ) {
-
-              return {
-                ...item,
-
-                gram:
-                  Number(
-                    item.volumeMl || 0
-                  )
-              };
-            }
-
-
-            return item;
-          });
-      }
-
-
-      /* ======================================================
-         STOCK CHECK
-      ====================================================== */
-
-      const stockChecks =
-        await Promise.all(
-
-          items.map(async item => {
-
-            const mat =
-              materials.find(
-                m =>
-                  m.id ===
-                  item.material_id
-              );
-
-
-            const stockRaw =
-              await getStockBalance(
-                item.material_id,
-                'material'
-              );
-
-
-            const density =
-              Number(
-                mat?.density ||
-                mat?.default_density ||
-                0
-              );
-
-
-            const matUnit =
-              mat?.unit || 'gram';
-
-
-            const requiredGram =
-              Number(
-                item.gram || 0
-              );
-
-
-            let stockGram =
-              Number(stockRaw || 0);
-
-
-            /*
-             * Untuk produksi PREMIX:
-             * jika stok disimpan ml,
-             * stock balance dikonversi ke gram.
-             *
-             * Tidak mengubah requiredGram.
-             */
-
-            if (
-              isPremix &&
-              matUnit === 'mililiter' &&
-              density > 0
-            ) {
-
-              stockGram =
-                Number(stockRaw || 0) *
-                density;
-            }
-
-
-            return {
-
-              ...item,
-
-              material_name:
-                mat?.name ||
-                item.material_name,
-
-              material_id:
-                item.material_id,
-
-              stockAvailable:
-                stockGram,
-
-              stockAvailableRaw:
-                stockRaw,
-
-              stockUnit:
-                matUnit,
-
-              stockSufficient:
-                stockGram >=
-                requiredGram,
-
-              requiredGram,
-
-              requiredMl:
-                Number(
-                  item.volumeMl || 0
-                )
-            };
-          })
-        );
-
-
-      /* ======================================================
-         SORT WEIGHING ORDER
-      ====================================================== */
-
-      const orderKey = (item) => {
-
-        const cat =
-          matsById[
-            item.material_id
-          ]?.material_category ||
-          item.material_type ||
-          '';
-
-
-        return (
-          PRODUCTION_ORDER[cat] ??
-          PRODUCTION_ORDER[
-            item.material_type
-          ] ??
-          80
-        );
-      };
-
-
-      stockChecks.sort(
-        (a, b) => {
-
-          const pa =
-            orderKey(a);
-
-          const pb =
-            orderKey(b);
-
-
-          if (pa !== pb) {
-            return pa - pb;
-          }
-
-
-          return String(
-            a.material_name || ''
-          ).localeCompare(
-            String(
-              b.material_name || ''
-            )
-          );
-        }
-      );
-
-
-      setCalcItems(stockChecks);
-      setStockCheck(stockChecks);
-
-    },
-
-    [recipes, materials]
+  const subtotal = form.items.reduce(
+    (sum, item) =>
+      sum +
+      Number(item.quantity || 0) * Number(item.price || 0) -
+      Number(item.discount || 0),
+    0
   );
 
+  const totalDiscount = form.items.reduce(
+    (sum, item) => sum + Number(item.discount || 0),
+    0
+  );
 
-  useEffect(() => {
+  const getStockByItem = item =>
+    allStock.find(
+      stock =>
+        stock.inventory_status === 'READY_FOR_SALE' &&
+        stock.item_id === item.product_id &&
+        (stock.batch_number || '') === (item.batch_number || '')
+    );
 
-    if (
-      form.recipe_id &&
-      form.target_volume
-    ) {
+  const getOldQty = item => {
+    if (formMode !== 'edit') return 0;
 
-      calculateMaterials(
-        form.recipe_id,
-        form.target_volume
+    return originalItems
+      .filter(
+        old =>
+          old.product_id === item.product_id &&
+          (old.batch_number || '') === (item.batch_number || '')
+      )
+      .reduce(
+        (sum, old) => sum + Number(old.quantity || 0),
+        0
       );
-    }
+  };
 
-  }, [
-    form.recipe_id,
-    form.target_volume,
-    calculateMaterials
-  ]);
+  const effectiveAvailable = item => {
+    const stock =
+      siapJualStock.find(s => s.id === item.stock_id) ||
+      getStockByItem(item);
 
+    return (
+      Number(stock?.available_quantity ?? stock?.quantity) +
+      getOldQty(item)
+    );
+  };
 
-  /* ==========================================================
-     OPEN ADD
-  ========================================================== */
+  const stockOptionsFor = item => {
+    const rows = allStock.filter(
+      stock =>
+        stock.inventory_status === 'READY_FOR_SALE' &&
+        (
+          Number(stock.available_quantity ?? stock.quantity) > 0 ||
+          stock.id === item.stock_id
+        )
+    );
+
+    return rows;
+  };
 
   const openAdd = () => {
+    const customer = customers[0] || null;
 
-    setEditing(null);
+    setFormMode('add');
+    setEditingSale(null);
+    setOriginalItems([]);
 
     setForm({
-      recipe_id: '',
-      target_volume: 1000,
-      production_date:
-        new Date()
-          .toISOString()
-          .slice(0, 10),
-      operator: '',
-      notes: ''
+      ...emptyForm(),
+      customer_id: customer?.id || '',
+      payment_terms: customer?.default_payment_terms || 0,
+      sales_person: customer?.sales_person || '',
     });
-
-    setCalcItems([]);
-    setStockCheck([]);
 
     setModalOpen(true);
   };
 
+  const openView = async sale => {
+    setViewSale(sale);
+    setViewItems([]);
+    setViewLoading(true);
+    setViewOpen(true);
 
-  /* ==========================================================
-     OPEN DETAIL
-  ========================================================== */
-
-  const openDetail = async (item) => {
-
-    setEditing(item);
-
-
-    const mats =
-      await base44.entities.ProductionMaterial.filter({
-        production_id:
-          item.id
-      });
-
-
-    setProductionMaterials(mats);
-
-
-    const ck = {};
-    const gMap = {};
-
-
-    let expectedTotal = 0;
-    let storedTotal = 0;
-
-
-    const target =
-      Number(
-        item.target_volume ||
-        item.target_quantity ||
-        0
-      );
-
-
-    const isFinished =
-      item.production_type !==
-      'PREMIX';
-
-
-    mats.forEach(m => {
-
-      ck[m.material_id] =
-        !!m.actual_gram &&
-        Number(m.actual_gram) > 0;
-
-
-      const mat =
-        materials.find(
-          x =>
-            x.id ===
-            m.material_id
-        );
-
-
-      const density =
-        Number(
-          mat?.density ||
-          mat?.default_density
-        ) ||
-        (
-          m.material_type ===
-          'vegetable_glycerin'
-            ? 1.261
-            : m.material_type ===
-              'propylene_glycol'
-              ? 1.036
-              : 1
-        );
-
-
-      /*
-       * ====================================================
-       * PATCH PREMIX 1:1
-       * ====================================================
-       *
-       * PREMIX:
-       * effective density = 1
-       *
-       * RAW MATERIAL:
-       * effective density = density material
-       */
-
-      const effectiveDensity =
-        isOneToOnePremix(mat)
-          ? 1
-          : density;
-
-
-      const recomputed =
-        (
-          Number(
-            m.percentage || 0
-          ) / 100
-        ) *
-        target *
-        effectiveDensity;
-
-
-      /*
-       * required_gram snapshot
-       * selalu lebih diprioritaskan.
-       */
-
-      gMap[m.material_id] =
-        m.required_gram != null
-          ? Number(
-              m.required_gram
-            )
-          : recomputed;
-
-
-      if (isFinished) {
-
-        expectedTotal +=
-          recomputed;
-
-        storedTotal +=
-          Number(
-            m.required_gram || 0
-          );
-      }
-    });
-
-
-    setChecked(ck);
-    setGramasiMap(gMap);
-
-
-    setGramasiTidakSinkron(
-      isFinished &&
-      mats.length > 0 &&
-      Math.abs(
-        expectedTotal -
-        storedTotal
-      ) > 1
-    );
-
-
-    setDetailOpen(true);
-  };
-
-
-  /* ==========================================================
-     SUBMIT PRODUCTION
-  ========================================================== */
-
-  const handleSubmit = async () => {
-
-    if (
-      !form.recipe_id ||
-      !form.target_volume ||
-      !form.operator
-    ) {
-
-      toast({
-        variant: 'destructive',
-        title:
-          'Resep, volume, dan operator wajib diisi'
-      });
-
-      return;
-    }
-
-
-    const recipe =
-      recipes.find(
-        r =>
-          r.id ===
-          form.recipe_id
-      );
-
-
-    /* ======================================================
-       PREMIX TOTAL VALIDATION
-    ====================================================== */
-
-    if (
-      recipe?.recipe_type ===
-      'PREMIX'
-    ) {
-
-      const totalPct =
-        stockCheck.reduce(
-          (sum, item) =>
-            sum +
-            Number(
-              item.percentage || 0
-            ),
-          0
-        );
-
-
-      if (
-        Math.abs(
-          totalPct - 100
-        ) > 0.1
-      ) {
-
-        toast({
-          variant: 'destructive',
-          title:
-            'Komposisi Recipe tidak valid',
-          description:
-            'Total bahan harus 100%.'
+    try {
+      const items =
+        await base44.entities.SaleItem.filter({
+          sale_id: sale.id,
         });
 
-        return;
-      }
-    }
-
-
-    /* ======================================================
-       STOCK VALIDATION
-    ====================================================== */
-
-    const insufficient =
-      stockCheck.filter(
-        s =>
-          !s.stockSufficient
-      );
-
-
-    if (
-      insufficient.length > 0
-    ) {
-
+      setViewItems(items || []);
+    } catch {
       toast({
         variant: 'destructive',
-
-        title:
-          'Stok tidak mencukupi',
-
-        description:
-          insufficient
-            .map(
-              s =>
-                `${s.material_name}: butuh ${s.requiredGram.toFixed(1)}g, tersedia ${s.stockAvailable.toFixed(1)}g`
-            )
-            .join(', ')
+        title: 'Gagal memuat detail penjualan',
       });
+    } finally {
+      setViewLoading(false);
+    }
+  };
 
+  const openEdit = async sale => {
+    if (sale.transaction_status === 'void') {
+      toast({
+        variant: 'destructive',
+        title: 'Transaksi VOID tidak dapat diedit',
+      });
       return;
     }
 
+    if (
+      sale.payment_method === 'tempo' &&
+      Number(sale.total_payment || 0) > 0
+    ) {
+      toast({
+        variant: 'destructive',
+        title: 'Transaksi sudah memiliki pembayaran',
+        description:
+          'Edit diblokir agar tidak merusak histori pembayaran/piutang.',
+      });
+      return;
+    }
 
     setSubmitting(true);
 
-
     try {
-
-      const prdNumber =
-        await generateProductionNumber();
-
-
-      const batchNumber =
-        await generateBatchNumber(
-          recipe?.brand_name
-            ?.substring(0, 3) ||
-          'GEN'
-        );
-
-
-      const isPremix =
-        recipe.recipe_type ===
-        'PREMIX';
-
-
-      const outputMaterial =
-        isPremix
-          ? materials.find(
-              m =>
-                m.id ===
-                recipe.output_material_id
-            )
-          : null;
-
-
-      const production =
-        await base44.entities.ProductionOrder.create({
-
-          production_number:
-            prdNumber,
-
-          batch_number:
-            batchNumber,
-
-          production_date:
-            form.production_date,
-
-          recipe_id:
-            recipe.id,
-
-          recipe_code:
-            recipe.code,
-
-          recipe_version:
-            recipe.version,
-
-          recipe_type:
-            recipe.recipe_type ||
-            'FINISHED_PRODUCT',
-
-          production_type:
-            recipe.recipe_type ||
-            'FINISHED_PRODUCT',
-
-          calculation_basis:
-            recipe.calculation_basis ||
-            'W_W',
-
-          product_id:
-            recipe.product_id || '',
-
-          product_name:
-            recipe.product_name || '',
-
-          output_material_id:
-            isPremix
-              ? recipe.output_material_id ||
-                ''
-              : '',
-
-          output_material_name:
-            outputMaterial?.name ||
-            recipe.output_material_name ||
-            '',
-
-          brand_id:
-            recipe.brand_id,
-
-          brand_name:
-            recipe.brand_name,
-
-          target_volume:
-            isPremix
-              ? 0
-              : Number(
-                  form.target_volume
-                ),
-
-          target_quantity:
-            isPremix
-              ? Number(
-                  form.target_volume
-                )
-              : 0,
-
-          target_unit:
-            isPremix
-              ? (
-                  recipe.calculation_basis ===
-                  'W_W'
-                    ? 'gram'
-                    : 'mililiter'
-                )
-              : 'mililiter',
-
-          actual_volume:
-            0,
-
-          operator:
-            form.operator,
-
-          approver:
-            '',
-
-          status:
-            'siap_produksi',
-
-          recipe_snapshot:
-            JSON.stringify(
-              recipe
-            ),
-
-          notes:
-            form.notes
+      const items =
+        await base44.entities.SaleItem.filter({
+          sale_id: sale.id,
         });
 
-
-      /* ======================================================
-         SNAPSHOT PRODUCTION MATERIAL
-      ====================================================== */
-
-      await base44.entities.ProductionMaterial.bulkCreate(
-
-        calcItems.map(item => ({
-
-          production_id:
-            production.id,
-
-          material_id:
-            item.material_id,
-
-          material_name:
-            item.material_name,
-
-          material_type:
-            item.material_type,
-
-          percentage:
-            item.percentage,
-
-          required_ml:
-            item.volumeMl,
-
-          required_gram:
-            item.gram,
-
-          actual_gram:
-            0,
-
-          deviation_gram:
-            0,
-
-          deviation_percent:
-            0,
-
-          stock_available:
-            item.stockAvailable,
-
-          stock_sufficient:
-            item.stockSufficient
-        }))
-      );
-
-
-      await createAuditLog({
-
-        module:
-          'Produksi',
-
-        action:
-          'Tambah',
-
-        entity_type:
-          'ProductionOrder',
-
-        entity_id:
-          production.id,
-
-        reference_number:
-          prdNumber
-      });
-
-
-      toast({
-        title:
-          'Produksi dibuat',
-
-        description:
-          `${prdNumber} · ${batchNumber}`
-      });
-
-
-      setModalOpen(false);
-
-      loadData();
-
-    } catch (e) {
-
-      toast({
-        variant: 'destructive',
-        title:
-          'Gagal menyimpan',
-        description:
-          e.message
-      });
-
-    } finally {
-
-      setSubmitting(false);
-    }
-  };
-
-
-  /* ==========================================================
-     POST PRODUCTION
-  ========================================================== */
-
-  const handlePost = async () => {
-
-    if (!editing) return;
-
-
-    if (
-      ![
-        'siap_produksi',
-        'sedang_diproses'
-      ].includes(
-        editing.status
-      )
-    ) {
-
-      toast({
-        variant: 'destructive',
-        title:
-          'Produksi sudah diposting',
-        description:
-          'Transaksi tidak dapat diposting dua kali.'
-      });
-
-      return;
-    }
-
-
-    if (
-      gramasiTidakSinkron
-    ) {
-
-      toast({
-        variant: 'destructive',
-        title:
-          'Data gramasi tidak sinkron',
-        description:
-          'Data gramasi produksi tidak sinkron dengan hasil kalkulasi resep. Produksi belum dapat dilanjutkan.'
-      });
-
-      return;
-    }
-
-
-    const mats =
-      await base44.entities.ProductionMaterial.filter({
-        production_id:
-          editing.id
-      });
-
-
-    const missing =
-      mats.filter(
-        m =>
-          !checked[
-            m.material_id
-          ]
-      );
-
-
-    if (
-      missing.length > 0
-    ) {
-
-      toast({
-        variant: 'destructive',
-        title:
-          'Penimbangan belum lengkap',
-        description:
-          `${missing.length} bahan belum dicentang`
-      });
-
-      return;
-    }
-
-
-    setSubmitting(true);
-
-
-    try {
-
-      const isPremixProduction =
-        editing.production_type ===
-        'PREMIX';
-
-
-      const consumeType =
-        isPremixProduction
-          ? 'premix_consumption'
-          : 'production_consumption';
-
-
-      /* ======================================================
-         CONSUME MATERIAL
-      ====================================================== */
-
-      for (const m of mats) {
-
-        const actual =
-          Number(
-            m.required_gram
-          ) || 0;
-
-
-        const dev =
-          actual -
-          Number(
-            m.required_gram || 0
-          );
-
-
-        const devPct =
-          Number(
-            m.required_gram || 0
-          ) > 0
-            ? (
-                dev /
-                Number(
-                  m.required_gram
-                )
-              ) * 100
-            : 0;
-
-
-        await base44.entities.ProductionMaterial.update(
-          m.id,
-          {
-
-            actual_gram:
-              actual,
-
-            deviation_gram:
-              dev,
-
-            deviation_percent:
-              devPct
-          }
-        );
-
-
-        const mat =
-          materials.find(
-            x =>
-              x.id ===
-              m.material_id
-          );
-
-
-        await recordStockMovement({
-          item_type: 'material',
-          item_id: m.material_id,
-          item_name: m.material_name,
-          item_code: mat?.code || '',
-          quantity_out: actual,
-          unit: 'gram',
-          unit_cost: Number(mat?.last_purchase_price || 0),
-          transaction_type: consumeType,
-          transaction_number: editing.production_number,
-          reference_type: 'production',
-          reference_id: editing.id,
-          notes: isPremixProduction
-            ? `Produksi premix ${editing.batch_number}`
-            : `Produksi ${editing.batch_number}`
-        });
-      }
-
-
-      const totalActualGram =
-        mats.reduce(
-          (sum, m) =>
-            sum +
-            Number(
-              m.required_gram || 0
-            ),
-          0
-        );
-
-
-      /* ======================================================
-         PREMIX OUTPUT
-      ====================================================== */
-
-      if (isPremixProduction) {
-
-        const outputMat =
-          materials.find(
-            m =>
-              m.id ===
-              editing.output_material_id
-          );
-
-
-        const outputQty =
-          Number(
-            editing.target_quantity
-          ) ||
-          totalActualGram;
-
-
-        const outputUnit =
-          editing.target_unit ||
-          'gram';
-
-
-        const totalInputCost =
-          mats.reduce(
-            (sum, m) => {
-
-              const mat =
-                materials.find(
-                  x =>
-                    x.id ===
-                    m.material_id
-                );
-
-
-              return (
-                sum +
-                (
-                  Number(
-                    m.required_gram || 0
-                  ) *
-                  Number(
-                    mat?.last_purchase_price ||
-                    0
-                  )
-                )
-              );
-            },
-            0
-          );
-
-
-        const hppPerUnit =
-          outputQty > 0
-            ? totalInputCost /
-              outputQty
-            : 0;
-
-
-        await recordStockMovement({
-          item_type: 'material',
-          item_id: editing.output_material_id,
-          item_name: outputMat?.name || editing.output_material_name || '',
-          item_code: outputMat?.code || '',
-          batch_id: editing.id,
-          batch_number: editing.batch_number,
-          inventory_status: 'PREMIX',
-          quantity_in: outputQty,
-          unit: outputUnit,
-          unit_cost: Number(hppPerUnit || 0),
-          transaction_type: 'premix_output',
-          transaction_number: editing.production_number,
-          reference_type: 'production',
-          reference_id: editing.id,
-          notes: `Hasil premix ${editing.batch_number}`
-        });
-
-
-        if (outputMat) {
-
-          await base44.entities.Material.update(
-            outputMat.id,
-            {
-              last_purchase_price:
-                Number(
-                  hppPerUnit.toFixed(4)
-                )
-            }
-          );
-        }
-
-
-        await base44.entities.ProductionOrder.update(
-          editing.id,
-          {
-
-            status:
-              'selesai_mixing',
-
-            actual_output_quantity:
-              outputQty,
-
-            waste_quantity:
-              Math.max(
-                0,
-                totalActualGram -
-                outputQty
-              )
-          }
-        );
-
-
-        await createAuditLog({
-
-          module:
-            'Produksi',
-
-          action:
-            'Posting Premix',
-
-          entity_type:
-            'ProductionOrder',
-
-          entity_id:
-            editing.id,
-
-          reference_number:
-            editing.production_number
-        });
-
-
-        toast({
-          title:
-            'Produksi Premix berhasil diposting',
-          description:
-            'Stok bahan dikurangi, stok premix ditambahkan'
-        });
-      }
-
-
-      /* ======================================================
-         FINISHED PRODUCT OUTPUT
-      ====================================================== */
-
-      else {
-
-        let actualVolume = 0;
-        for (const m of mats) {
-          const mat = materials.find(x => x.id === m.material_id);
-          const d = isOneToOnePremix(mat) ? 1 : (Number(mat?.density) || (m.material_type === 'vegetable_glycerin' ? 1.261 : 1.036));
-          if (d > 0) actualVolume += Number(m.required_gram || 0) / d;
-        }
-        const totalInputCost = mats.reduce((s, m) => s + Number(m.required_gram || 0) * Number(materials.find(x => x.id === m.material_id)?.last_purchase_price || 0), 0);
-        const actualOutputMl = Number(actualVolume) || 0, hppBulkPerMl = actualOutputMl > 0 ? totalInputCost / actualOutputMl : 0;
-
-        await recordStockMovement({
-          item_type: 'product',
-          item_id: editing.product_id || editing.recipe_id,
-          item_name: `Bulk ${editing.product_name || editing.recipe_code}`,
-          item_code: editing.batch_number,
-          batch_id: editing.id,
-          batch_number: editing.batch_number,
-          inventory_status: 'BULK',
-          quantity_in: Number(actualVolume),
-          unit: 'ml',
-          unit_cost: Number(hppBulkPerMl || 0),
-          transaction_type: 'production_output',
-          transaction_number: editing.production_number,
-          reference_type: 'production',
-          reference_id: editing.id,
-          notes: `Hasil mixing ${editing.batch_number}`
-        });
-
-
-        await base44.entities.ProductionOrder.update(
-          editing.id,
-          {
-            status:
-              'siap_bottling',
-
-            actual_volume:
-              Number(
-                actualVolume
-              )
-          }
-        );
-
-
-        await createAuditLog({
-
-          module:
-            'Produksi',
-
-          action:
-            'Posting',
-
-          entity_type:
-            'ProductionOrder',
-
-          entity_id:
-            editing.id,
-
-          reference_number:
-            editing.production_number
-        });
-
-
-        toast({
-          title:
-            'Produksi berhasil diposting',
-          description:
-            'Stok bahan dikurangi, bulk masuk'
-        });
-      }
-
-
-      setDetailOpen(false);
-
-      loadData();
-
-    } catch (e) {
-
-      toast({
-        variant: 'destructive',
-        title:
-          'Gagal posting',
-        description:
-          e.message
-      });
-
-    } finally {
-
-      setSubmitting(false);
-    }
-  };
-
-
-  /* ==========================================================
-     PREMIX POST PREVIEW
-  ========================================================== */
-
-  const handlePostRequest = () => {
-
-    if (
-      !editing ||
-      editing.production_type !==
-      'PREMIX'
-    ) {
-
-      return handlePost();
-    }
-
-
-    const rows =
-      productionMaterials.map(m => {
-
-        const mat =
-          materials.find(
-            x =>
-              x.id ===
-              m.material_id
-          );
-
-
-        const req =
-          Number(
-            m.required_gram || 0
-          );
-
-
-        const price =
-          Number(
-            mat?.last_purchase_price ||
-            0
-          );
-
-
-        const unit =
-          (
-            mat?.unit || ''
-          ).toLowerCase();
-
-
-        const errors = [];
-
-
-        if (
-          unit &&
-          unit !== 'gram' &&
-          unit !== 'mililiter'
-        ) {
-
-          errors.push(
-            `unit "${mat.unit}" bukan base unit (gram/mililiter) — kemungkinan harga masih per satuan beli`
-          );
-        }
-
-
-        if (!(price > 0)) {
-          errors.push(
-            'harga per base unit belum diisi (0/null)'
-          );
-        }
-
-
-        if (!(req > 0)) {
-          errors.push(
-            'required_gram <= 0'
-          );
-        }
-
+      const prepared = (items || []).map(item => {
+        const stock = getStockByItem(item);
 
         return {
-
-          name:
-            m.material_name,
-
-          unit:
-            mat?.unit || '-',
-
-          required_gram:
-            req,
-
-          price_per_gram:
-            price,
-
-          cost:
-            req * price,
-
-          valid:
-            errors.length === 0,
-
-          errors
+          ...item,
+          stock_id: stock?.id || '',
+          quantity: Number(item.quantity) || 0,
+          price: Number(item.price) || 0,
+          discount: Number(item.discount) || 0,
+          unit: item.unit || 'unit',
         };
       });
 
+      setFormMode('edit');
+      setEditingSale(sale);
+      setOriginalItems(items || []);
 
-    const outputQty =
-      Number(
-        editing.actual_output_quantity
-      ) ||
-      Number(
-        editing.target_quantity
-      ) ||
-      0;
+      setForm({
+        customer_id: sale.customer_id || '',
+        transaction_date:
+          sale.transaction_date ||
+          new Date().toISOString().slice(0, 10),
+        payment_method: sale.payment_method || 'cash',
+        payment_terms: Number(sale.payment_terms) || 0,
+        warehouse_id: sale.warehouse_id || '',
+        sales_person: sale.sales_person || '',
+        notes: sale.notes || '',
+        items: prepared,
+      });
 
-
-    const allValid =
-      rows.length > 0 &&
-      rows.every(
-        r => r.valid
-      ) &&
-      outputQty > 0;
-
-
-    const total =
-      rows.reduce(
-        (sum, row) =>
-          sum +
-          (
-            row.valid
-              ? row.cost
-              : 0
-          ),
-        0
-      );
-
-
-    const hpp =
-      allValid &&
-      outputQty > 0
-        ? total /
-          outputQty
-        : 0;
-
-
-    setPremixPreview({
-
-      rows,
-
-      outputQty,
-
-      total,
-
-      hpp,
-
-      valid:
-        allValid
-    });
-
-
-    setPremixConfirmOpen(true);
+      setModalOpen(true);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Gagal membuka edit',
+        description: error?.message || '',
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
+  const addItem = () =>
+    setForm(current => ({
+      ...current,
+      items: [
+        ...current.items,
+        {
+          stock_id: '',
+          product_id: '',
+          product_name: '',
+          batch_number: '',
+          quantity: 1,
+          unit: 'unit',
+          price: 0,
+          discount: 0,
+        },
+      ],
+    }));
 
-  /* ==========================================================
-     CANCEL
-  ========================================================== */
+  const updateItem = (index, field, value) =>
+    setForm(current => {
+      const items = [...current.items];
 
-  const handleCancel = async (item) => {
+      if (field === 'stock_id') {
+        const stock = allStock.find(s => s.id === value);
+        const product = products.find(
+          p => p.id === stock?.item_id
+        );
 
-    if (
-      !confirm(
-        `Batalkan produksi "${item.production_number}"?`
-      )
-    ) {
+        items[index] = {
+          ...items[index],
+          stock_id: value,
+          product_id: stock?.item_id || '',
+          product_name:
+            product?.name || stock?.item_name || '',
+          batch_number: stock?.batch_number || '',
+          quantity: items[index].quantity || 1,
+          price: product?.sale_price || 0,
+        };
+      } else {
+        items[index] = {
+          ...items[index],
+          [field]: value,
+        };
+      }
 
+      return {
+        ...current,
+        items,
+      };
+    });
+
+  const removeItem = index =>
+    setForm(current => ({
+      ...current,
+      items: current.items.filter(
+        (_, i) => i !== index
+      ),
+    }));
+
+  const validateForm = () => {
+    if (!form.customer_id || form.items.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Customer dan item wajib diisi',
+      });
+      return false;
+    }
+
+    for (const item of form.items) {
+      if (!item.product_id || Number(item.quantity) <= 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Produk dan jumlah wajib valid',
+        });
+        return false;
+      }
+
+      const available = effectiveAvailable(item);
+
+      if (Number(item.quantity) > available) {
+        toast({
+          variant: 'destructive',
+          title: `Stok ${item.product_name} tidak mencukupi`,
+          description: `Tersedia setelah memperhitungkan transaksi lama: ${available}`,
+        });
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const buildSalePayload = customer => {
+    const dueDate =
+      form.payment_method === 'tempo'
+        ? new Date(
+            new Date(form.transaction_date).getTime() +
+              Number(form.payment_terms || 0) * 86400000
+          )
+            .toISOString()
+            .slice(0, 10)
+        : '';
+
+    const total = subtotal;
+    const remaining =
+      form.payment_method === 'tempo' ? total : 0;
+
+    return {
+      transaction_date: form.transaction_date,
+      customer_id: form.customer_id,
+      customer_name: customer?.name || '',
+      sales_person: form.sales_person,
+      warehouse_id: form.warehouse_id,
+      warehouse_name:
+        warehouses.find(w => w.id === form.warehouse_id)?.name ||
+        '',
+      payment_method: form.payment_method,
+      payment_terms: Number(form.payment_terms || 0),
+      due_date: dueDate,
+      subtotal,
+      discount: totalDiscount,
+      tax: 0,
+      total,
+      total_payment: total - remaining,
+      remaining_receivable: remaining,
+      transaction_status: 'posted',
+      payment_status:
+        form.payment_method === 'tempo'
+          ? 'belum_dibayar'
+          : 'lunas',
+      notes: form.notes,
+    };
+  };
+
+  const buildSaleItems = saleId =>
+    form.items.map(item => ({
+      sale_id: saleId,
+      product_id: item.product_id,
+      product_name: item.product_name,
+      batch_number: item.batch_number,
+      quantity: Number(item.quantity),
+      unit: item.unit || 'unit',
+      price: Number(item.price),
+      discount: Number(item.discount || 0),
+      subtotal:
+        Number(item.quantity) * Number(item.price) -
+        Number(item.discount || 0),
+    }));
+
+  const postStockOut = async (
+    sale,
+    items,
+    invoiceNumber,
+    notePrefix = 'Penjualan'
+  ) => {
+    for (const item of items) {
+      const stock =
+        allStock.find(s => s.id === item.stock_id) ||
+        getStockByItem(item);
+
+      const product = products.find(
+        p => p.id === item.product_id
+      );
+
+      await recordStockMovement({
+        item_type: 'product',
+        item_id: item.product_id,
+        item_name: item.product_name,
+        item_code: product?.code || '',
+        batch_id: stock?.batch_id || '',
+        batch_number:
+          stock?.batch_number || item.batch_number || '',
+        inventory_status: 'READY_FOR_SALE',
+        quantity_out: Number(item.quantity),
+        unit: item.unit || 'unit',
+        transaction_type: 'sales',
+        transaction_number: invoiceNumber,
+        reference_type: 'sale',
+        reference_id: sale.id,
+        notes: `${notePrefix} ${invoiceNumber}`,
+      });
+    }
+  };
+
+  const reverseStock = async (
+    sale,
+    items,
+    reason
+  ) => {
+    for (const item of items) {
+      const stock = getStockByItem(item);
+      const product = products.find(
+        p => p.id === item.product_id
+      );
+
+      await recordStockMovement({
+        item_type: 'product',
+        item_id: item.product_id,
+        item_name:
+          item.product_name || product?.name || '',
+        item_code: product?.code || '',
+        batch_id: stock?.batch_id || '',
+        batch_number: item.batch_number || '',
+        inventory_status: 'READY_FOR_SALE',
+        quantity_in: Number(item.quantity),
+        unit: item.unit || 'unit',
+
+        /*
+         * Tetap gunakan transaction_type sales
+         * karena ini type existing yang sudah valid.
+         * Direction quantity_in menandakan reversal.
+         */
+        transaction_type: 'sales',
+        transaction_number:
+          `${sale.invoice_number}-REV`,
+        reference_type: 'sale',
+        reference_id: sale.id,
+        notes: `${reason} ${sale.invoice_number}`,
+      });
+    }
+  };
+
+  const createSale = async () => {
+    const customer = customers.find(
+      c => c.id === form.customer_id
+    );
+
+    const invoiceNumber =
+      await generateInvoiceNumber();
+
+    const sale =
+      await base44.entities.Sale.create({
+        invoice_number: invoiceNumber,
+        ...buildSalePayload(customer),
+      });
+
+    await base44.entities.SaleItem.bulkCreate(
+      buildSaleItems(sale.id)
+    );
+
+    await postStockOut(
+      sale,
+      form.items,
+      invoiceNumber
+    );
+
+    await createAuditLog({
+      module: 'Penjualan',
+      action: 'Posting',
+      entity_type: 'Sale',
+      entity_id: sale.id,
+      reference_number: invoiceNumber,
+    });
+
+    return invoiceNumber;
+  };
+
+  const updateSale = async () => {
+    if (!editingSale) return;
+
+    const customer = customers.find(
+      c => c.id === form.customer_id
+    );
+
+    /*
+     * 1. Return stock transaksi lama.
+     */
+    await reverseStock(
+      editingSale,
+      originalItems,
+      'Reversal edit'
+    );
+
+    /*
+     * 2. Update header.
+     */
+    await base44.entities.Sale.update(
+      editingSale.id,
+      buildSalePayload(customer)
+    );
+
+    /*
+     * 3. Replace detail SaleItem.
+     */
+    const oldRows =
+      await base44.entities.SaleItem.filter({
+        sale_id: editingSale.id,
+      });
+
+    for (const row of oldRows || []) {
+      await base44.entities.SaleItem.delete(row.id);
+    }
+
+    await base44.entities.SaleItem.bulkCreate(
+      buildSaleItems(editingSale.id)
+    );
+
+    /*
+     * 4. Post stock berdasarkan item baru.
+     */
+    await postStockOut(
+      editingSale,
+      form.items,
+      editingSale.invoice_number,
+      'Repost edit'
+    );
+
+    await createAuditLog({
+      module: 'Penjualan',
+      action: 'Edit',
+      entity_type: 'Sale',
+      entity_id: editingSale.id,
+      reference_number:
+        editingSale.invoice_number,
+    });
+
+    return editingSale.invoice_number;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+
+    setSubmitting(true);
+
+    try {
+      const invoiceNumber =
+        formMode === 'edit'
+          ? await updateSale()
+          : await createSale();
+
+      toast({
+        title:
+          formMode === 'edit'
+            ? 'Penjualan berhasil diperbarui'
+            : 'Penjualan berhasil diposting',
+        description: invoiceNumber,
+      });
+
+      setModalOpen(false);
+      setEditingSale(null);
+      setOriginalItems([]);
+      await loadData();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title:
+          formMode === 'edit'
+            ? 'Gagal mengedit penjualan'
+            : 'Gagal menyimpan',
+        description: error?.message || '',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const voidSale = async sale => {
+    if (sale.transaction_status === 'void') {
+      toast({
+        variant: 'destructive',
+        title: 'Invoice sudah VOID',
+      });
       return;
     }
 
+    if (
+      sale.payment_method === 'tempo' &&
+      Number(sale.total_payment || 0) > 0
+    ) {
+      toast({
+        variant: 'destructive',
+        title: 'Void diblokir',
+        description:
+          'Invoice tempo sudah memiliki pembayaran. Batalkan/alokasikan balik pembayaran terlebih dahulu.',
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `VOID invoice ${sale.invoice_number}?\n\nStok barang akan dikembalikan dan invoice tetap disimpan sebagai histori.`
+    );
+
+    if (!confirmed) return;
+
+    setSubmitting(true);
 
     try {
+      const items =
+        await base44.entities.SaleItem.filter({
+          sale_id: sale.id,
+        });
 
-      await base44.entities.ProductionOrder.update(
-        item.id,
+      await reverseStock(
+        sale,
+        items || [],
+        'VOID penjualan'
+      );
+
+      await base44.entities.Sale.update(
+        sale.id,
         {
-          status:
-            'dibatalkan'
+          transaction_status: 'void',
+          notes: [
+            sale.notes,
+            `VOID ${new Date().toISOString()}`,
+          ]
+            .filter(Boolean)
+            .join('\n'),
         }
       );
 
-
       await createAuditLog({
-
-        module:
-          'Produksi',
-
-        action:
-          'Batal',
-
-        entity_type:
-          'ProductionOrder',
-
-        entity_id:
-          item.id,
-
+        module: 'Penjualan',
+        action: 'Void',
+        entity_type: 'Sale',
+        entity_id: sale.id,
         reference_number:
-          item.production_number
+          sale.invoice_number,
       });
-
 
       toast({
-        title:
-          'Produksi dibatalkan'
+        title: 'Invoice berhasil di-VOID',
+        description:
+          sale.invoice_number,
       });
 
-
-      loadData();
-
-    } catch {
-
+      await loadData();
+    } catch (error) {
       toast({
         variant: 'destructive',
-        title:
-          'Gagal'
+        title: 'Gagal VOID invoice',
+        description: error?.message || '',
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
-
-  /* ==========================================================
-     PDF
-  ========================================================== */
-
-  const exportProductionPDF = async (row) => {
-
+  const exportInvoicePDF = async row => {
     try {
-
-      const mats =
-        await base44.entities.ProductionMaterial.filter({
-          production_id:
-            row.id
+      const items =
+        await base44.entities.SaleItem.filter({
+          sale_id: row.id,
         });
 
+      const customer = customers.find(
+        c => c.id === row.customer_id
+      );
 
       exportDocumentToPDF({
-
         title:
-          row.production_type ===
-          'PREMIX'
-            ? 'Work Order Premix'
-            : 'Work Order Produksi',
-
-        docNumber:
-          row.production_number,
-
-        docDate:
-          row.production_date,
-
-        partyLabel:
-          'No. Batch',
-
+          row.transaction_status === 'void'
+            ? 'Invoice — VOID'
+            : 'Invoice',
+        docNumber: row.invoice_number,
+        docDate: row.transaction_date,
+        partyLabel: 'Kepada Yth.',
         party: {
-          name:
-            row.batch_number
+          name: row.customer_name,
+          address: [
+            customer?.city || '',
+          ].filter(Boolean),
+          phone: customer?.phone || '',
         },
-
         infoLines: [
-
           {
-            label:
-              'Produk',
+            label: 'Sales',
             value:
-              row.product_name ||
-              row.output_material_name ||
-              '-'
+              row.sales_person || '-',
           },
-
           {
-            label:
-              'Merk',
+            label: 'Metode',
             value:
-              row.brand_name ||
-              '-'
+              row.payment_method,
           },
-
           {
-            label:
-              'Target',
+            label: 'Jatuh Tempo',
             value:
-              row.production_type ===
-              'PREMIX'
-                ? `${row.target_quantity || 0} ${row.target_unit || 'gram'}`
-                : `${row.target_volume || 0} ml`
+              row.due_date || '-',
           },
-
           {
-            label:
-              'Operator',
+            label: 'Status',
             value:
-              row.operator || '-'
+              row.transaction_status,
           },
-
-          {
-            label:
-              'Status',
-            value:
-              row.status
-          }
         ],
-
         itemColumns: [
-
           {
-            key:
-              'no',
-            header:
-              '#',
-            width:
-              24,
-            align:
-              'right'
+            key: 'no',
+            header: '#',
+            width: 22,
+            align: 'right',
           },
-
           {
-            key:
-              'material_name',
-            header:
-              'Bahan'
+            key: 'product_name',
+            header: 'Produk',
           },
-
           {
-            key:
-              'required_gram',
-            header:
-              'Standar (g)',
-            width:
-              85,
-            align:
-              'right'
+            key: 'batch_number',
+            header: 'Batch',
+            width: 80,
           },
-
           {
-            key:
-              'actual_gram',
-            header:
-              'Aktual (g)',
-            width:
-              85,
-            align:
-              'right'
+            key: 'quantity',
+            header: 'Qty',
+            width: 45,
+            align: 'right',
           },
-
           {
-            key:
-              'deviation_gram',
-            header:
-              'Selisih',
-            width:
-              75,
-            align:
-              'right'
-          }
+            key: 'unit',
+            header: 'Sat',
+            width: 38,
+          },
+          {
+            key: 'price',
+            header: 'Harga',
+            width: 80,
+            align: 'right',
+          },
+          {
+            key: 'subtotal',
+            header: 'Subtotal',
+            width: 90,
+            align: 'right',
+          },
         ],
-
-        itemRows:
-          mats.map(
-            (m, i) => ({
-              no:
-                i + 1,
-
-              material_name:
-                m.material_name,
-
-              required_gram:
-                Number(
-                  m.required_gram || 0
-                ).toFixed(2),
-
-              actual_gram:
-                Number(
-                  m.actual_gram || 0
-                ).toFixed(2),
-
-              deviation_gram:
-                Number(
-                  m.deviation_gram || 0
-                ).toFixed(2)
-            })
-          ),
-
+        itemRows: items.map(
+          (item, index) => ({
+            no: index + 1,
+            product_name:
+              item.product_name,
+            batch_number:
+              item.batch_number || '-',
+            quantity:
+              item.quantity,
+            unit:
+              item.unit || '',
+            price:
+              fmtMoney(item.price),
+            subtotal:
+              fmtMoney(item.subtotal),
+          })
+        ),
         totals: [
-
           {
-            label:
-              'Total Standar (g)',
-
+            label: 'Subtotal',
             value:
-              mats.reduce(
-                (sum, m) =>
-                  sum +
-                  Number(
-                    m.required_gram || 0
-                  ),
-                0
-              ).toFixed(2)
+              fmtMoney(row.subtotal),
           },
-
+          ...(row.discount
+            ? [{
+                label: 'Diskon',
+                value:
+                  fmtMoney(row.discount),
+              }]
+            : []),
           {
-            label:
-              'Total Aktual (g)',
-
+            label: 'Total',
             value:
-              mats.reduce(
-                (sum, m) =>
-                  sum +
-                  Number(
-                    m.actual_gram || 0
-                  ),
-                0
-              ).toFixed(2),
-
-            bold:
-              true
-          }
-        ],
-
-        notes:
-          row.notes,
-
-        signatures: [
-
-          {
-            label:
-              'Operator,',
-            name:
-              row.operator || ''
+              fmtMoney(row.total),
+            bold: true,
           },
-
           {
-            label:
-              'Disetujui,',
-            name:
-              row.approver || ''
-          }
+            label: 'Dibayar',
+            value:
+              fmtMoney(row.total_payment),
+          },
+          ...(row.remaining_receivable > 0
+            ? [{
+                label: 'Sisa Piutang',
+                value:
+                  fmtMoney(
+                    row.remaining_receivable
+                  ),
+                bold: true,
+              }]
+            : []),
         ],
-
+        notes: row.notes,
+        signatures: [{
+          label: 'Hormat kami,',
+          name:
+            row.sales_person || '',
+        }],
         fileName:
-          `wo-${row.production_number}.pdf`
+          `invoice-${row.invoice_number}.pdf`,
       });
-
     } catch {
-
       toast({
         variant: 'destructive',
         title:
-          'Gagal membuat PDF'
+          'Gagal membuat PDF invoice',
       });
     }
   };
 
-
-  /* ==========================================================
-     TABLE COLUMNS
-  ========================================================== */
-
   const columns = [
-
     {
-      key:
-        'production_number',
-      header:
-        'No. Produksi',
-      sortable:
-        true,
+      key: 'invoice_number',
+      header: 'No. Invoice',
+      sortable: true,
       className:
-        'font-mono font-medium'
+        'font-mono font-medium',
     },
-
     {
-      key:
-        'batch_number',
-      header:
-        'No. Batch',
-      className:
-        'font-mono'
+      key: 'transaction_date',
+      header: 'Tanggal',
+      sortable: true,
     },
-
     {
-      key:
-        'product_name',
-      header:
-        'Produk',
-      render:
-        row =>
-          row.product_name ||
-          '—'
+      key: 'customer_name',
+      header: 'Customer',
+      sortable: true,
+      className: 'font-medium',
     },
-
     {
-      key:
-        'brand_name',
-      header:
-        'Merk',
-      render:
-        row =>
-          row.brand_name ||
-          '—'
+      key: 'payment_method',
+      header: 'Metode',
+      render: row => (
+        <span className="text-[11px] px-2 py-0.5 bg-muted rounded uppercase">
+          {row.payment_method}
+        </span>
+      ),
     },
-
     {
-      key:
-        'target',
-      header:
-        'Target',
-      render:
-        row =>
-          row.production_type ===
-          'PREMIX'
-            ? `${row.target_quantity || 0} ${row.target_unit || 'gram'}`
-            : `${row.target_volume || 0} ml`
+      key: 'total',
+      header: 'Total',
+      render: row => (
+        <span className="tabular-nums">
+          {fmtMoney(row.total)}
+        </span>
+      ),
     },
-
     {
-      key:
-        'operator',
-      header:
-        'Operator',
-      render:
-        row =>
-          row.operator ||
-          '—'
-    },
-
-    {
-      key:
-        'status',
-      header:
-        'Status',
-      render:
-        row =>
-          <StatusBadge status={row.status} />
-    },
-
-    {
-      key:
-        'actions',
-
-      header:
-        '',
-
-      width:
-        '100px',
-
-      render:
-        row => (
-
-          <div className="flex items-center gap-1">
-
-            <PdfButton
-              onExport={() =>
-                exportProductionPDF(row)
-              }
-              perm="production"
-              iconOnly
-              label="Cetak Work Order"
-            />
-
-
-            {row.status ===
-              'siap_produksi' && (
-
-              <button
-                onClick={() =>
-                  openDetail(row)
-                }
-                className="p-1.5 hover:bg-blue-50 rounded text-blue-600"
-                title="Proses"
-              >
-
-                <Play className="w-3.5 h-3.5" />
-
-              </button>
+      key: 'remaining_receivable',
+      header: 'Sisa Piutang',
+      render: row =>
+        row.remaining_receivable > 0 ? (
+          <span className="text-red-600 tabular-nums">
+            {fmtMoney(
+              row.remaining_receivable
             )}
+          </span>
+        ) : (
+          <span className="text-emerald-600">
+            Lunas
+          </span>
+        ),
+    },
+    {
+      key: 'transaction_status',
+      header: 'Status',
+      render: row => (
+        <StatusBadge
+          status={
+            row.transaction_status
+          }
+        />
+      ),
+    },
+    {
+      key: 'payment_status',
+      header: 'Pembayaran',
+      render: row => (
+        <StatusBadge
+          status={
+            row.payment_status
+          }
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Aksi',
+      width: '150px',
+      render: row => (
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => openView(row)}
+            title="View"
+            className="p-1.5 rounded hover:bg-muted text-blue-600"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
 
+          <button
+            type="button"
+            onClick={() => openEdit(row)}
+            disabled={
+              row.transaction_status === 'void'
+            }
+            title="Edit"
+            className="p-1.5 rounded hover:bg-muted text-amber-600 disabled:opacity-30"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
 
-            {row.status ===
-              'sedang_diproses' && (
+          <button
+            type="button"
+            onClick={() => voidSale(row)}
+            disabled={
+              row.transaction_status === 'void' ||
+              submitting
+            }
+            title="Void"
+            className="p-1.5 rounded hover:bg-red-50 text-red-600 disabled:opacity-30"
+          >
+            <Ban className="w-4 h-4" />
+          </button>
 
-              <button
-                onClick={() =>
-                  openDetail(row)
-                }
-                className="p-1.5 hover:bg-blue-50 rounded text-blue-600"
-                title="Selesaikan"
-              >
-
-                <CheckCircle className="w-3.5 h-3.5" />
-
-              </button>
-            )}
-
-
-            {row.status ===
-              'siap_bottling' && (
-
-              <span
-                className="p-1.5 text-violet-500"
-                title="Siap bottling"
-              >
-
-                <CheckCircle className="w-3.5 h-3.5" />
-
-              </span>
-            )}
-
-
-            {![
-              'dibatalkan',
-              'siap_bottling',
-              'selesai_mixing'
-            ].includes(
-              row.status
-            ) && (
-
-              <button
-                onClick={() =>
-                  handleCancel(row)
-                }
-                className="p-1.5 hover:bg-red-50 rounded text-red-500"
-                title="Batalkan"
-              >
-
-                <X className="w-3.5 h-3.5" />
-
-              </button>
-            )}
-
-          </div>
-        )
-    }
+          <PdfButton
+            onExport={() =>
+              exportInvoicePDF(row)
+            }
+            perm="invoice_pdf"
+            iconOnly
+            label="Cetak Invoice"
+          />
+        </div>
+      ),
+    },
   ];
 
-
-  /* ==========================================================
-     VIEW DATA
-  ========================================================== */
-
-  const selectedRecipe =
-    recipes.find(
-      r =>
-        r.id ===
-        form.recipe_id
-    );
-
-
-  const isPremix =
-    selectedRecipe?.recipe_type ===
-    'PREMIX';
-
-
-  const visibleRecipes =
-    recipes.filter(
-      r =>
-        canSelectRecipeForProduction(
-          user,
-          r
-        )
-    );
-
-
-  const formulaHidden =
-    isRecipeFormulaHidden(
-      user,
-      selectedRecipe
-    );
-
-
-  const basis =
-    selectedRecipe?.calculation_basis ||
-    'W_W';
-
-
-  const targetUnit =
-    isPremix
-      ? (
-          basis === 'W_W'
-            ? 'Gram'
-            : 'ml'
-        )
-      : 'ml';
-
-
-  const targetLabel =
-    isPremix
-      ? `Target Produksi (${targetUnit}) *`
-      : 'Target Volume (ml) *';
-
-
-  const totalFormulaPct =
-    stockCheck.reduce(
-      (sum, item) =>
-        sum +
-        Number(
-          item.percentage || 0
-        ),
-      0
-    );
-
-
-  const totalRequirement =
-    stockCheck.reduce(
-      (sum, item) =>
-        sum +
-        Number(
-          item.gram || 0
-        ),
-      0
-    );
-
-
-  /* ==========================================================
-     RENDER
-  ========================================================== */
-
   return (
-
     <div className="p-5 max-w-[1400px] mx-auto">
-
-
       <PageHeader
-
-        title="Produksi"
-
-        description="Buat batch produksi dari resep approved"
-
+        title="Penjualan"
+        description="Penjualan barang siap jual"
         actions={
-
           <Button
             onClick={openAdd}
             size="sm"
             className="gap-1.5"
           >
-
             <Plus className="w-4 h-4" />
-
-            Produksi Baru
-
+            Penjualan Baru
           </Button>
         }
       />
 
-
       <DataTable
-
         columns={columns}
-
         data={data}
-
         loading={loading}
-
-        emptyMessage="Belum ada produksi"
-
+        emptyMessage="Belum ada penjualan"
         searchKeys={[
-          'production_number',
-          'batch_number',
-          'product_name',
-          'brand_name'
+          'invoice_number',
+          'customer_name',
         ]}
-
-        searchPlaceholder="Cari produksi..."
+        searchPlaceholder="Cari penjualan..."
       />
 
-
-      {/* ====================================================
-          CREATE MODAL
-      ==================================================== */}
-
       <FormModal
-
         open={modalOpen}
-
         onClose={() =>
           setModalOpen(false)
         }
-
-        title="Produksi Baru"
-
+        title={
+          formMode === 'edit'
+            ? `Edit Penjualan · ${editingSale?.invoice_number || ''}`
+            : 'Penjualan Baru'
+        }
         onSubmit={handleSubmit}
-
         submitting={submitting}
-
-        submitLabel="Buat Produksi"
-
-        size="lg"
+        submitLabel={
+          formMode === 'edit'
+            ? 'Simpan Perubahan'
+            : 'Posting Penjualan'
+        }
+        size="xl"
       >
-
-
-        <div className="grid grid-cols-2 gap-3">
-
-
-          <div className="col-span-2">
-
+        <div className="grid grid-cols-3 gap-3">
+          <div>
             <Label className="text-[12.5px] mb-1">
-              Resep (Approved) *
+              Customer *
             </Label>
-
 
             <Select
+              value={form.customer_id}
+              onValueChange={value => {
+                const customer =
+                  customers.find(
+                    c => c.id === value
+                  );
 
-              value={
-                form.recipe_id
-              }
-
-              onValueChange={v =>
-                setForm({
-                  ...form,
-                  recipe_id: v
-                })
-              }
+                setForm(current => ({
+                  ...current,
+                  customer_id: value,
+                  sales_person:
+                    customer?.sales_person ||
+                    '',
+                  payment_terms:
+                    customer?.default_payment_terms ||
+                    0,
+                }));
+              }}
             >
-
               <SelectTrigger className="h-9 text-[13px]">
-
-                <SelectValue placeholder="Pilih resep approved" />
-
+                <SelectValue placeholder="Pilih customer" />
               </SelectTrigger>
 
-
               <SelectContent>
-
-                {visibleRecipes.map(r => (
-
+                {customers.map(customer => (
                   <SelectItem
-                    key={r.id}
-                    value={r.id}
+                    key={customer.id}
+                    value={customer.id}
                   >
-
-                    {r.code} · {r.name} (v{r.version})
-
+                    {customer.name}
                   </SelectItem>
-
                 ))}
-
               </SelectContent>
-
             </Select>
-
           </div>
 
-
           <div>
-
             <Label className="text-[12.5px] mb-1">
-              {targetLabel}
+              Tanggal
             </Label>
-
-
-            <NumberInput
-
-              value={
-                form.target_volume
-              }
-
-              onChange={v =>
-                setForm({
-                  ...form,
-                  target_volume: v
-                })
-              }
-
-              allowDecimal
-
-              min={0}
-
-              maxDecimals={2}
-
-              className="h-9 text-[13px]"
-            />
-
-          </div>
-
-
-          <div>
-
-            <Label className="text-[12.5px] mb-1">
-              Tanggal Produksi
-            </Label>
-
 
             <Input
-
               type="date"
-
-              value={
-                form.production_date
+              value={form.transaction_date}
+              onChange={event =>
+                setForm(current => ({
+                  ...current,
+                  transaction_date:
+                    event.target.value,
+                }))
               }
-
-              onChange={e =>
-                setForm({
-                  ...form,
-                  production_date:
-                    e.target.value
-                })
-              }
-
               className="h-9 text-[13px]"
             />
-
           </div>
-
 
           <div>
-
             <Label className="text-[12.5px] mb-1">
-              Operator *
+              Metode Pembayaran
             </Label>
 
-
-            <Input
-
-              value={
-                form.operator
-              }
-
-              onChange={e =>
-                setForm({
-                  ...form,
-                  operator:
-                    e.target.value
-                })
-              }
-
-              className="h-9 text-[13px]"
-            />
-
-          </div>
-
-
-          <div>
-
-            <Label className="text-[12.5px] mb-1">
-              Catatan
-            </Label>
-
-
-            <Input
-
-              value={
-                form.notes
-              }
-
-              onChange={e =>
-                setForm({
-                  ...form,
-                  notes:
-                    e.target.value
-                })
-              }
-
-              className="h-9 text-[13px]"
-            />
-
-          </div>
-
-        </div>
-
-
-        {selectedRecipe &&
-          stockCheck.length > 0 && (
-
-          <div className="border-t pt-3 mt-2">
-
-            <Label className="text-[12.5px] font-semibold mb-2 block">
-              Ringkasan Produksi
-            </Label>
-
-
-            <div className="grid grid-cols-3 gap-2 text-[11.5px]">
-
-              <div className="bg-muted/40 rounded px-2 py-1.5">
-
-                Recipe Type:
-
-                <b>
-                  {' '}
-                  {isPremix
-                    ? 'PREMIX'
-                    : 'FINISHED_PRODUCT'}
-                </b>
-
-              </div>
-
-
-              <div className="bg-muted/40 rounded px-2 py-1.5">
-
-                Calculation Basis:
-
-                <b>
-                  {' '}
-                  {isPremix
-                    ? basis
-                    : '—'}
-                </b>
-
-              </div>
-
-
-              <div className="bg-muted/40 rounded px-2 py-1.5">
-
-                Target Produksi:
-
-                <b>
-                  {' '}
-                  {formatNumber(
-                    form.target_volume
-                  )}{' '}
-                  {targetUnit}
-                </b>
-
-              </div>
-
-
-              <div className="bg-muted/40 rounded px-2 py-1.5">
-
-                Satuan:
-
-                <b>
-                  {' '}
-                  {isPremix
-                    ? (
-                        basis === 'W_W'
-                          ? 'Gram'
-                          : 'ml'
-                      )
-                    : 'ml'}
-                </b>
-
-              </div>
-
-
-              {!formulaHidden && (
-
-                <div className="bg-muted/40 rounded px-2 py-1.5">
-
-                  Total Formula:
-
-                  <b>
-                    {' '}
-                    {totalFormulaPct.toFixed(2)}%
-                  </b>
-
-                </div>
-              )}
-
-
-              <div className="bg-muted/40 rounded px-2 py-1.5">
-
-                Total Kebutuhan:
-
-                <b>
-                  {' '}
-                  {formatNumber(
-                    totalRequirement,
-                    2
-                  )}{' '}
-                  gram
-                </b>
-
-              </div>
-
-            </div>
-
-          </div>
-        )}
-
-
-        {stockCheck.length > 0 && (
-
-          <div className="border-t pt-3 mt-2">
-
-            <Label className="text-[12.5px] font-semibold mb-2 block">
-              Pemeriksaan Stok Bahan
-            </Label>
-
-
-            <div className="overflow-x-auto">
-
-              <table className="w-full text-[11.5px]">
-
-                <thead>
-
-                  <tr className="bg-muted/40 text-muted-foreground">
-
-                    <th className="px-2 py-1 text-left">
-                      Bahan
-                    </th>
-
-
-                    {!formulaHidden && (
-
-                      <th className="px-2 py-1 text-right">
-                        Persentase
-                      </th>
-                    )}
-
-
-                    <th className="px-2 py-1 text-right">
-                      Kebutuhan (ml)
-                    </th>
-
-
-                    <th className="px-2 py-1 text-right">
-                      Kebutuhan (gram)
-                    </th>
-
-
-                    <th className="px-2 py-1 text-right">
-
-                      Stok Tersedia
-
-                      {isPremix
-                        ? ' (gram)'
-                        : ''}
-
-                    </th>
-
-
-                    <th className="px-2 py-1 text-center">
-                      Status
-                    </th>
-
-                  </tr>
-
-                </thead>
-
-
-                <tbody>
-
-                  {stockCheck.map(
-                    (item, i) => (
-
-                    <tr
-                      key={i}
-                      className="border-b border-border/30"
-                    >
-
-                      <td className="px-2 py-1">
-                        {item.material_name}
-                      </td>
-
-
-                      {!formulaHidden && (
-
-                        <td className="px-2 py-1 text-right tabular-nums">
-
-                          {Number(
-                            item.percentage || 0
-                          ).toFixed(2)}%
-
-                        </td>
-                      )}
-
-
-                      <td className="px-2 py-1 text-right tabular-nums">
-
-                        {Number(
-                          item.volumeMl || 0
-                        ).toFixed(2)}
-
-                      </td>
-
-
-                      <td className="px-2 py-1 text-right tabular-nums">
-
-                        {Number(
-                          item.gram || 0
-                        ).toFixed(2)}
-
-                      </td>
-
-
-                      <td className="px-2 py-1 text-right tabular-nums">
-
-                        {Number(
-                          item.stockAvailable || 0
-                        ).toFixed(2)}
-
-                      </td>
-
-
-                      <td className="px-2 py-1 text-center">
-
-                        {item.stockSufficient
-
-                          ? (
-
-                            <span className="text-emerald-600 font-semibold">
-                              ✓ Cukup
-                            </span>
-
-                          )
-
-                          : (
-
-                            <span className="text-red-600 font-semibold flex items-center justify-center gap-0.5">
-
-                              <AlertTriangle className="w-3 h-3" />
-
-                              Kurang
-
-                            </span>
-                          )
-                        }
-
-                      </td>
-
-                    </tr>
-
-                  ))}
-
-                </tbody>
-
-              </table>
-
-            </div>
-
-          </div>
-        )}
-
-      </FormModal>
-
-
-      {/* ====================================================
-          DETAIL / WEIGHING
-      ==================================================== */}
-
-      <FormModal
-
-        open={detailOpen}
-
-        onClose={() =>
-          setDetailOpen(false)
-        }
-
-        title={
-          `Proses Penimbangan · ${editing?.production_number || ''}`
-        }
-
-        onSubmit={
-          handlePostRequest
-        }
-
-        submitting={
-          submitting
-        }
-
-        submitLabel="Posting Produksi"
-
-        size="lg"
-      >
-
-
-        <div className="text-[12px] text-muted-foreground mb-3">
-
-          Batch:
-
-          <b>
-            {' '}
-            {editing?.batch_number}
-          </b>
-
-          {' '}· Target:
-
-          <b>
-
-            {' '}
-
-            {editing?.production_type ===
-            'PREMIX'
-
-              ? `${editing?.target_quantity || 0} ${editing?.target_unit || 'gram'}`
-
-              : `${editing?.target_volume || 0} ml`
-            }
-
-          </b>
-
-        </div>
-
-
-        <div className="text-[11.5px] text-muted-foreground mb-2">
-
-          {
-            productionMaterials.filter(
-              m =>
-                checked[
-                  m.material_id
-                ]
-            ).length
-          }
-
-          /
-
-          {productionMaterials.length}
-
-          {' '}bahan sudah dimasukkan
-
-        </div>
-
-
-        <div className="overflow-x-auto">
-
-          <table className="w-full text-[12px]">
-
-
-            <thead>
-
-              <tr className="bg-muted/40 text-muted-foreground">
-
-                <th className="px-2 py-1 text-center w-10">
-                  ✓
-                </th>
-
-                <th className="px-2 py-1 text-left">
-                  Nama Bahan
-                </th>
-
-                <th className="px-2 py-1 text-right">
-                  Gramasi
-                </th>
-
-              </tr>
-
-            </thead>
-
-
-            <tbody>
-
-              {productionMaterials.map(m => (
-
-                <tr
-
-                  key={m.id}
-
-                  className={
-                    `border-b border-border/30 ${
-                      checked[m.material_id]
-                        ? 'bg-emerald-50/60'
-                        : ''
-                    }`
-                  }
-                >
-
-                  <td className="px-2 py-1.5 text-center">
-
-                    <Checkbox
-
-                      checked={
-                        !!checked[
-                          m.material_id
-                        ]
-                      }
-
-                      onCheckedChange={v =>
-                        setChecked(c => ({
-                          ...c,
-                          [m.material_id]:
-                            v
-                        }))
-                      }
-                    />
-
-                  </td>
-
-
-                  <td className="px-2 py-1.5">
-
-                    {m.material_name}
-
-                  </td>
-
-
-                  <td className="px-2 py-1.5 text-right tabular-nums font-medium">
-
-                    {
-                      (
-                        gramasiMap[
-                          m.material_id
-                        ] ??
-                        Number(
-                          m.required_gram || 0
-                        )
-                      ).toFixed(2)
-                    }
-
-                    {' '}gram
-
-                  </td>
-
-                </tr>
-
-              ))}
-
-            </tbody>
-
-          </table>
-
-        </div>
-
-
-        {gramasiTidakSinkron
-
-          ? (
-
-            <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-[11px] text-red-700 mt-2">
-
-              ⚠ Data gramasi produksi tidak sinkron dengan hasil kalkulasi resep.
-              Produksi belum dapat dilanjutkan.
-              Batalkan produksi ini dan buat ulang.
-
-            </div>
-
-          )
-
-          : (
-
-            <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[11px] text-amber-700 mt-2">
-
-              ⚠ Posting akan mengurangi stok bahan dan{' '}
-
-              {
-                editing?.production_type ===
-                'PREMIX'
-                  ? 'menambah stok premix'
-                  : 'membuat output bulk'
-              }.
-
-              {' '}Proses tidak dapat diulang.
-
-            </div>
-          )
-        }
-
-      </FormModal>
-
-
-      {/* ====================================================
-          PREMIX HPP CONFIRMATION
-      ==================================================== */}
-
-      <AlertDialog
-
-        open={
-          premixConfirmOpen
-        }
-
-        onOpenChange={
-          setPremixConfirmOpen
-        }
-      >
-
-        <AlertDialogContent className="max-w-2xl">
-
-
-          <AlertDialogHeader>
-
-            <AlertDialogTitle>
-              Konfirmasi HPP Premix
-            </AlertDialogTitle>
-
-
-            <AlertDialogDescription>
-
-              Verifikasi harga ingredient sudah dalam satuan gram
-              (base unit) sebelum posting.
-
-              Batch:
-
-              <b>
-                {' '}
-                {editing?.batch_number}
-              </b>
-
-            </AlertDialogDescription>
-
-          </AlertDialogHeader>
-
-
-          <div className="overflow-x-auto max-h-[45vh]">
-
-            <table className="w-full text-[12px]">
-
-
-              <thead>
-
-                <tr className="bg-muted/40 text-muted-foreground">
-
-                  <th className="px-2 py-1 text-left">
-                    Bahan
-                  </th>
-
-                  <th className="px-2 py-1 text-left">
-                    Unit
-                  </th>
-
-                  <th className="px-2 py-1 text-right">
-                    Gram
-                  </th>
-
-                  <th className="px-2 py-1 text-right">
-                    Harga/gram
-                  </th>
-
-                  <th className="px-2 py-1 text-right">
-                    Total Cost
-                  </th>
-
-                </tr>
-
-              </thead>
-
-
-              <tbody>
-
-                {(premixPreview?.rows || [])
-                  .map((r, i) => (
-
-                  <tr
-                    key={i}
-                    className="border-b border-border/30"
-                  >
-
-                    <td className="px-2 py-1">
-                      {r.name}
-                    </td>
-
-                    <td className="px-2 py-1">
-                      {r.unit}
-                    </td>
-
-                    <td className="px-2 py-1 text-right tabular-nums">
-
-                      {formatNumber(
-                        r.required_gram,
-                        2
-                      )}
-
-                    </td>
-
-                    <td className="px-2 py-1 text-right tabular-nums">
-
-                      {formatCurrency(
-                        r.price_per_gram
-                      )}
-
-                    </td>
-
-                    <td className="px-2 py-1 text-right tabular-nums">
-
-                      {formatCurrency(
-                        r.cost
-                      )}
-
-                    </td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-
-              <tfoot>
-
-                <tr className="bg-muted/30 font-semibold">
-
-                  <td
-                    className="px-2 py-1"
-                    colSpan={4}
-                  >
-
-                    Total Input Cost
-
-                  </td>
-
-
-                  <td className="px-2 py-1 text-right tabular-nums">
-
-                    {formatCurrency(
-                      premixPreview?.total || 0
-                    )}
-
-                  </td>
-
-                </tr>
-
-              </tfoot>
-
-            </table>
-
-          </div>
-
-
-          <div className="grid grid-cols-2 gap-2 text-[12px]">
-
-            <div className="bg-muted/40 rounded px-2 py-1.5">
-
-              Output:
-
-              <b>
-                {' '}
-                {formatNumber(
-                  premixPreview?.outputQty || 0
-                )}{' '}
-                gram
-              </b>
-
-            </div>
-
-
-            <div className="bg-primary/10 rounded px-2 py-1.5">
-
-              HPP/gram:
-
-              <b>
-                {' '}
-                {formatCurrency(
-                  premixPreview?.hpp || 0
-                )}
-              </b>
-
-            </div>
-
-          </div>
-
-
-          {premixPreview &&
-          !premixPreview.valid
-
-            ? (
-
-              <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-[11px] text-red-700">
-
-                ⚠ Validasi gagal — posting diblokir:
-
-                <ul className="list-disc ml-4 mt-1">
-
-                  {
-                    premixPreview.rows
-
-                      .filter(
-                        r =>
-                          !r.valid
-                      )
-
-                      .flatMap(
-                        r =>
-                          r.errors.map(
-                            (e, i) => (
-
-                              <li
-                                key={
-                                  r.name + i
-                                }
-                              >
-
-                                {r.name}: {e}
-
-                              </li>
-
-                            )
-                          )
-                      )
-                  }
-
-                </ul>
-
-              </div>
-
-            )
-
-            : (
-
-              <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[11px] text-amber-700">
-
-                ⚠ Pastikan "Harga/gram" bukan harga per KG.
-                Jika nilainya terlihat 1000× dari biasanya,
-                periksa Master Bahan sebelum posting.
-
-              </div>
-            )
-          }
-
-
-          <AlertDialogFooter>
-
-            <AlertDialogCancel>
-              Batal
-            </AlertDialogCancel>
-
-
-            <AlertDialogAction
-
-              disabled={
-                !premixPreview?.valid ||
-                submitting
-              }
-
-              className={
-                !premixPreview?.valid
-                  ? 'opacity-50 pointer-events-none'
-                  : ''
-              }
-
-              onClick={() =>
-                handlePost()
+            <Select
+              value={form.payment_method}
+              onValueChange={value =>
+                setForm(current => ({
+                  ...current,
+                  payment_method: value,
+                }))
               }
             >
+              <SelectTrigger className="h-9 text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
 
-              Konfirmasi & Posting
+              <SelectContent>
+                <SelectItem value="cash">
+                  Cash
+                </SelectItem>
 
-            </AlertDialogAction>
+                <SelectItem value="transfer">
+                  Transfer
+                </SelectItem>
 
-          </AlertDialogFooter>
+                <SelectItem value="tempo">
+                  Tempo
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-        </AlertDialogContent>
+          <div>
+            <Label className="text-[12.5px] mb-1">
+              Sales
+            </Label>
 
-      </AlertDialog>
+            <Input
+              value={form.sales_person}
+              onChange={event =>
+                setForm(current => ({
+                  ...current,
+                  sales_person:
+                    event.target.value,
+                }))
+              }
+              className="h-9 text-[13px]"
+            />
+          </div>
 
+          <div>
+            <Label className="text-[12.5px] mb-1">
+              Gudang
+            </Label>
+
+            <Select
+              value={form.warehouse_id}
+              onValueChange={value =>
+                setForm(current => ({
+                  ...current,
+                  warehouse_id: value,
+                }))
+              }
+            >
+              <SelectTrigger className="h-9 text-[13px]">
+                <SelectValue placeholder="Pilih gudang" />
+              </SelectTrigger>
+
+              <SelectContent>
+                {warehouses.map(warehouse => (
+                  <SelectItem
+                    key={warehouse.id}
+                    value={warehouse.id}
+                  >
+                    {warehouse.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {form.payment_method === 'tempo' && (
+            <div>
+              <Label className="text-[12.5px] mb-1">
+                Termin (hari)
+              </Label>
+
+              <NumberInput
+                value={form.payment_terms}
+                onChange={value =>
+                  setForm(current => ({
+                    ...current,
+                    payment_terms: value,
+                  }))
+                }
+                allowDecimal={false}
+                min={0}
+                className="h-9 text-[13px]"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="border-t pt-3">
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-[12.5px] font-semibold">
+              Detail Penjualan
+            </Label>
+
+            <Button
+              type="button"
+              onClick={addItem}
+              size="sm"
+              variant="outline"
+              className="h-7 text-[12px] gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Tambah Item
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11.5px]">
+              <thead>
+                <tr className="bg-muted/40 text-muted-foreground">
+                  <th className="px-2 py-1 text-left">
+                    Produk
+                  </th>
+                  <th className="px-2 py-1 text-right w-20">
+                    Jumlah
+                  </th>
+                  <th className="px-2 py-1 text-right w-28">
+                    Harga
+                  </th>
+                  <th className="px-2 py-1 text-right w-24">
+                    Diskon
+                  </th>
+                  <th className="px-2 py-1 text-right w-28">
+                    Subtotal
+                  </th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+
+              <tbody>
+                {form.items.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="text-center py-3 text-muted-foreground"
+                    >
+                      Belum ada item
+                    </td>
+                  </tr>
+                )}
+
+                {form.items.map(
+                  (item, index) => (
+                    <tr
+                      key={index}
+                      className="border-b border-border/30"
+                    >
+                      <td className="px-2 py-1">
+                        <Select
+                          value={item.stock_id}
+                          onValueChange={value =>
+                            updateItem(
+                              index,
+                              'stock_id',
+                              value
+                            )
+                          }
+                        >
+                          <SelectTrigger className="h-7 text-[11.5px]">
+                            <SelectValue placeholder="Pilih produk" />
+                          </SelectTrigger>
+
+                          <SelectContent>
+                            {stockOptionsFor(
+                              item
+                            ).map(stock => {
+                              const product =
+                                products.find(
+                                  p =>
+                                    p.id ===
+                                    stock.item_id
+                                );
+
+                              return (
+                                <SelectItem
+                                  key={
+                                    stock.id
+                                  }
+                                  value={
+                                    stock.id
+                                  }
+                                >
+                                  {getInventoryDisplayName(
+                                    product?.name ||
+                                      stock.item_name,
+                                    'READY_FOR_SALE'
+                                  )}{' '}
+                                  (
+                                  {Number(
+                                    stock.available_quantity ??
+                                      stock.quantity
+                                  )}
+                                  )
+                                  {stock.batch_number
+                                    ? ` · ${stock.batch_number}`
+                                    : ''}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </td>
+
+                      <td className="px-2 py-1">
+                        <NumberInput
+                          value={
+                            item.quantity
+                          }
+                          onChange={value =>
+                            updateItem(
+                              index,
+                              'quantity',
+                              value
+                            )
+                          }
+                          allowDecimal={
+                            false
+                          }
+                          min={0}
+                          className="h-7 text-[11.5px] text-right"
+                        />
+                      </td>
+
+                      <td className="px-2 py-1">
+                        <NumberInput
+                          value={item.price}
+                          onChange={value =>
+                            updateItem(
+                              index,
+                              'price',
+                              value
+                            )
+                          }
+                          allowDecimal
+                          min={0}
+                          className="h-7 text-[11.5px] text-right"
+                        />
+                      </td>
+
+                      <td className="px-2 py-1">
+                        <NumberInput
+                          value={
+                            item.discount
+                          }
+                          onChange={value =>
+                            updateItem(
+                              index,
+                              'discount',
+                              value
+                            )
+                          }
+                          allowDecimal
+                          min={0}
+                          className="h-7 text-[11.5px] text-right"
+                        />
+                      </td>
+
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {fmtMoney(
+                          Number(
+                            item.quantity
+                          ) *
+                            Number(
+                              item.price
+                            ) -
+                            Number(
+                              item.discount ||
+                                0
+                            )
+                        )}
+                      </td>
+
+                      <td className="px-1 py-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeItem(
+                              index
+                            )
+                          }
+                          className="p-0.5 hover:bg-red-50 rounded text-red-500"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-end gap-4 mt-2 text-[12px]">
+            <span>
+              Subtotal:{' '}
+              <b>
+                {fmtMoney(subtotal)}
+              </b>
+            </span>
+
+            <span>
+              Diskon:{' '}
+              <b>
+                {fmtMoney(
+                  totalDiscount
+                )}
+              </b>
+            </span>
+
+            <span className="text-primary">
+              Total:{' '}
+              <b>
+                {fmtMoney(subtotal)}
+              </b>
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-[12.5px] mb-1">
+            Catatan
+          </Label>
+
+          <Textarea
+            value={form.notes}
+            onChange={event =>
+              setForm(current => ({
+                ...current,
+                notes:
+                  event.target.value,
+              }))
+            }
+            rows={2}
+            className="text-[13px]"
+          />
+        </div>
+      </FormModal>
+
+      {viewOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-background rounded-lg border border-border shadow-xl w-full max-w-3xl max-h-[90vh] overflow-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div>
+                <div className="font-semibold text-[14px]">
+                  Detail Penjualan
+                </div>
+
+                <div className="text-[11px] text-muted-foreground font-mono">
+                  {viewSale?.invoice_number}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setViewOpen(false)
+                }
+                className="p-1 rounded hover:bg-muted"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {viewLoading ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                Memuat...
+              </div>
+            ) : (
+              <div className="p-4 space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px]">
+                  <div>
+                    <div className="text-muted-foreground">
+                      Customer
+                    </div>
+                    <div className="font-medium">
+                      {viewSale?.customer_name ||
+                        '—'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-muted-foreground">
+                      Tanggal
+                    </div>
+                    <div className="font-medium">
+                      {viewSale?.transaction_date ||
+                        '—'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-muted-foreground">
+                      Sales
+                    </div>
+                    <div className="font-medium">
+                      {viewSale?.sales_person ||
+                        '—'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-muted-foreground">
+                      Gudang
+                    </div>
+                    <div className="font-medium">
+                      {viewSale?.warehouse_name ||
+                        '—'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-muted-foreground">
+                      Metode
+                    </div>
+                    <div className="font-medium uppercase">
+                      {viewSale?.payment_method ||
+                        '—'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-muted-foreground">
+                      Status
+                    </div>
+                    <StatusBadge
+                      status={
+                        viewSale?.transaction_status
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-muted-foreground">
+                      Pembayaran
+                    </div>
+                    <StatusBadge
+                      status={
+                        viewSale?.payment_status
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-muted-foreground">
+                      Jatuh Tempo
+                    </div>
+                    <div className="font-medium">
+                      {viewSale?.due_date ||
+                        '—'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-[12px]">
+                    <thead className="bg-muted/40 text-muted-foreground">
+                      <tr>
+                        <th className="text-left px-3 py-2">
+                          Produk
+                        </th>
+                        <th className="text-left px-3 py-2">
+                          Batch
+                        </th>
+                        <th className="text-right px-3 py-2">
+                          Qty
+                        </th>
+                        <th className="text-right px-3 py-2">
+                          Harga
+                        </th>
+                        <th className="text-right px-3 py-2">
+                          Diskon
+                        </th>
+                        <th className="text-right px-3 py-2">
+                          Subtotal
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {viewItems.map(
+                        item => (
+                          <tr
+                            key={item.id}
+                            className="border-t"
+                          >
+                            <td className="px-3 py-2 font-medium">
+                              {item.product_name}
+                            </td>
+                            <td className="px-3 py-2 font-mono text-[11px]">
+                              {item.batch_number ||
+                                '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {item.quantity}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {fmtMoney(
+                                item.price
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {fmtMoney(
+                                item.discount
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right font-medium">
+                              {fmtMoney(
+                                item.subtotal
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-end">
+                  <div className="w-64 space-y-1 text-[12px]">
+                    <div className="flex justify-between">
+                      <span>
+                        Subtotal
+                      </span>
+                      <b>
+                        {fmtMoney(
+                          viewSale?.subtotal
+                        )}
+                      </b>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span>
+                        Diskon
+                      </span>
+                      <b>
+                        {fmtMoney(
+                          viewSale?.discount
+                        )}
+                      </b>
+                    </div>
+
+                    <div className="flex justify-between border-t pt-1 text-[14px]">
+                      <span>
+                        Total
+                      </span>
+                      <b>
+                        {fmtMoney(
+                          viewSale?.total
+                        )}
+                      </b>
+                    </div>
+
+                    {Number(
+                      viewSale?.remaining_receivable
+                    ) > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>
+                          Sisa Piutang
+                        </span>
+                        <b>
+                          {fmtMoney(
+                            viewSale?.remaining_receivable
+                          )}
+                        </b>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {viewSale?.notes && (
+                  <div className="text-[12px]">
+                    <div className="text-muted-foreground mb-1">
+                      Catatan
+                    </div>
+                    <div className="border rounded p-2 whitespace-pre-wrap">
+                      {viewSale.notes}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
