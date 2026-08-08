@@ -1,444 +1,864 @@
-/**
- * HPP Product Calculator
- *
- * Priority:
- * 1. Actual StockLedger output.unit_cost
- * 2. Standard Recipe + ProductComponentMapping
- *
- * Recipe boleh berasal dari source product untuk kasus maklon.
- * Mapping selalu berasal dari final/result product.
- */
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useToast } from '@/components/ui/use-toast';
+import PageHeader from '@/components/PageHeader';
+import SearchableSelect from '@/components/SearchableSelect';
+import { Label } from '@/components/ui/label';
+import {
+  AlertTriangle,
+  Box,
+  Calculator,
+  FlaskConical,
+  Package,
+  Stamp,
+  Tag,
+  TrendingUp,
+} from 'lucide-react';
+import { computeProductHpp } from '@/lib/hppCalculator';
+import {
+  formatCurrency as fmtMoney,
+  formatQuantity as fmtQty,
+} from '@/lib/format';
 
-import { calculateRecipe } from './recipeCalculator';
+const FINISHED_TYPES = [
+  'barang_siap_jual',
+  'barang_belum_cukai',
+  'barang_siap_labeling',
+  'barang_siap_bottling',
+];
 
-function ingredientCost(item, material) {
-  const price = Number(material?.last_purchase_price) || 0;
-  const isMl = material?.unit === 'mililiter';
-  const qty = isMl
-    ? Number(item.volumeMl) || 0
-    : Number(item.gram) || 0;
-
-  return {
-    qty,
-    unitLabel: isMl ? 'ml' : 'g',
-    unitCost: price,
-    cost: qty * price,
-  };
-}
-
-const STAGE_PRIORITY = {
-  excise_output: 4,
-  labeling_output: 3,
-  bottling_output: 2,
-  production_output: 1,
-  premix_output: 1,
-};
-
-function ledgerTime(row) {
-  return new Date(
-    row?.transaction_date ||
-    row?.created_date ||
-    0
-  ).getTime();
-}
-
-export function getActualHppFromLedger(stockLedger, productId) {
-  if (!Array.isArray(stockLedger) || !productId) return null;
-
-  const outputs = stockLedger
-    .filter(row =>
-      row?.item_id === productId &&
-      String(row?.transaction_type || '').endsWith('_output') &&
-      Number(row?.quantity_in) > 0 &&
-      Number(row?.unit_cost) > 0
-    )
+function pickProductRecipe(recipes, productId) {
+  return (recipes || [])
+    .filter(r => r.product_id === productId)
     .sort((a, b) => {
-      const stage =
-        (STAGE_PRIORITY[b.transaction_type] || 0) -
-        (STAGE_PRIORITY[a.transaction_type] || 0);
+      const approvedDiff =
+        (b.status === 'approved' ? 1 : 0) -
+        (a.status === 'approved' ? 1 : 0);
 
-      return stage || ledgerTime(b) - ledgerTime(a);
-    });
-
-  if (!outputs.length) return null;
-
-  const latest = outputs[0];
-  const outputQty = Number(latest.quantity_in) || 1;
-
-  const refs = latest.reference_id
-    ? stockLedger.filter(
-        row => row.reference_id === latest.reference_id
-      )
-    : [];
-
-  let previousStagePerBottle = 0;
-  let bottlePerBottle = 0;
-  let labelPerBottle = 0;
-  let excisePerBottle = 0;
-
-  if (latest.transaction_type === 'bottling_output') {
-    const input = refs.find(
-      row => row.transaction_type === 'bottling_consumption'
-    );
-
-    if (input) {
-      const total =
-        (Number(input.unit_cost) || 0) *
-        (Number(input.quantity_out) || 0);
-
-      previousStagePerBottle = total / outputQty;
-    }
-
-    const cost = refs
-      .filter(
-        row =>
-          row.transaction_type ===
-          'bottling_bottle_consumption'
-      )
-      .reduce(
-        (sum, row) =>
-          sum +
-          (Number(row.unit_cost) || 0) *
-          (Number(row.quantity_out) || 0),
-        0
+      return (
+        approvedDiff ||
+        (Number(b.version) || 0) -
+          (Number(a.version) || 0)
       );
-
-    bottlePerBottle = cost / outputQty;
-  }
-
-  if (latest.transaction_type === 'labeling_output') {
-    const input = refs.find(
-      row => row.transaction_type === 'labeling_consumption'
-    );
-
-    previousStagePerBottle =
-      Number(input?.unit_cost) || 0;
-
-    const cost = refs
-      .filter(
-        row => row.transaction_type === 'label_consumption'
-      )
-      .reduce(
-        (sum, row) =>
-          sum +
-          (Number(row.unit_cost) || 0) *
-          (Number(row.quantity_out) || 0),
-        0
-      );
-
-    labelPerBottle = cost / outputQty;
-  }
-
-  if (latest.transaction_type === 'excise_output') {
-    const input = refs.find(
-      row =>
-        row.transaction_type === 'excise_consumption' &&
-        row.item_type === 'product'
-    );
-
-    previousStagePerBottle =
-      Number(input?.unit_cost) || 0;
-
-    const cost = refs
-      .filter(
-        row =>
-          row.transaction_type === 'excise_consumption' &&
-          row.item_type === 'material'
-      )
-      .reduce(
-        (sum, row) =>
-          sum +
-          (Number(row.unit_cost) || 0) *
-          (Number(row.quantity_out) || 0),
-        0
-      );
-
-    excisePerBottle = cost / outputQty;
-  }
-
-  if (
-    latest.transaction_type === 'production_output' ||
-    latest.transaction_type === 'premix_output'
-  ) {
-    previousStagePerBottle =
-      Number(latest.unit_cost) || 0;
-  }
-
-  return {
-    actualHppPerUnit: Number(latest.unit_cost) || 0,
-    previousStagePerBottle,
-    bottlePerBottle,
-    labelPerBottle,
-    excisePerBottle,
-    transactionType: latest.transaction_type,
-    stage: latest.inventory_status || '',
-    batchNumber: latest.batch_number || '',
-    referenceId: latest.reference_id || '',
-    outputQty,
-  };
+    })[0] || null;
 }
 
-export function computeProductHpp({
-  product,
-  recipe,
-  ingredients,
-  materials,
-  mappings,
-  pgMaterial,
-  vgMaterial,
-  stockLedger,
-}) {
-  if (!product) return null;
+function findMaklonSourceProductId(stockLedger, resultProductId) {
+  const output = (stockLedger || [])
+    .filter(
+      row =>
+        row.item_id === resultProductId &&
+        row.transaction_type === 'labeling_output'
+    )
+    .sort(
+      (a, b) =>
+        new Date(
+          b.transaction_date ||
+            b.created_date ||
+            0
+        ) -
+        new Date(
+          a.transaction_date ||
+            a.created_date ||
+            0
+        )
+    )[0];
 
-  const bottleSize = Number(product.bottle_size) || 0;
-  const volume =
-    Number(recipe?.target_volume) ||
-    bottleSize ||
-    0;
+  if (!output?.reference_id) return null;
 
-  const result = {
-    product,
-    recipe: recipe || null,
-    volume,
-    bottleSize,
-
-    bulkRows: [],
-    bulkTotal: 0,
-    costPerMl: 0,
-    bulkPerBottle: 0,
-
-    bottleRows: [],
-    bottleTotal: 0,
-    boxRows: [],
-    boxTotal: 0,
-    labelRows: [],
-    labelTotal: 0,
-    exciseRows: [],
-    exciseTotal: 0,
-
-    hppPerBottle: 0,
-    salePrice: Number(product.sale_price) || 0,
-    margin: 0,
-    marginPct: 0,
-
-    hasRecipe: !!recipe,
-    validation: null,
-    useActual: false,
-    actualHpp: null,
-  };
-
-  const matById = id =>
-    (materials || []).find(m => m.id === id);
-
-  /*
-   * RECIPE / BULK
-   * Optional.
-   * Produk maklon boleh memakai recipe source product.
-   */
-  if (recipe) {
-    const calc = calculateRecipe({
-      ingredients: (ingredients || []).map(item => ({
-        ...item,
-        percentage: Number(item.percentage) || 0,
-      })),
-      targetVolume: volume,
-      targetNicotine: recipe.target_nicotine,
-      targetPG: recipe.target_pg,
-      targetVG: recipe.target_vg,
-      pgMaterial,
-      vgMaterial,
-    });
-
-    result.validation = calc.validation;
-
-    result.bulkRows = calc.items.map(item => {
-      const mat = matById(item.material_id);
-
-      return {
-        ...ingredientCost(item, mat),
-        materialId: item.material_id,
-        materialName:
-          item.material_name ||
-          mat?.name ||
-          (item.isAuto ? 'Auto' : '—'),
-        materialCode: mat?.code || '',
-        materialType: item.material_type,
-        isPremix: !!item.is_premix,
-        isAuto: !!item.isAuto,
-        percentage: item.percentage,
-      };
-    });
-
-    result.bulkTotal = result.bulkRows.reduce(
-      (sum, row) => sum + row.cost,
-      0
-    );
-
-    result.costPerMl =
-      volume > 0
-        ? result.bulkTotal / volume
-        : 0;
-
-    result.bulkPerBottle =
-      bottleSize > 0
-        ? result.costPerMl * bottleSize
-        : 0;
-  }
-
-  /*
-   * PRODUCT COMPONENT MAPPING
-   *
-   * PENTING:
-   * Tidak tergantung Recipe.
-   *
-   * Jadi produk maklon tanpa resep sendiri
-   * tetap membaca mapping botol/box/label/cukai.
-   */
-  const activeMappings = (mappings || []).filter(
-    mapping => mapping.is_active !== false
+  const input = (stockLedger || []).find(
+    row =>
+      row.reference_id === output.reference_id &&
+      row.transaction_type === 'labeling_consumption' &&
+      row.item_type === 'product'
   );
 
-  const buildComp = type =>
-    activeMappings
-      .filter(
-        mapping =>
-          mapping.component_type === type
-      )
-      .map(mapping => {
-        const mat =
-          matById(mapping.material_id);
+  return input?.item_id || null;
+}
 
-        const price =
-          Number(mat?.last_purchase_price) || 0;
+function StageCard({
+  icon: Icon,
+  title,
+  subtitle,
+  rows = [],
+  subtotal = 0,
+  perBottleNote,
+  color,
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-border bg-muted/40">
+        <Icon className={`w-4 h-4 ${color}`} />
 
-        const qty =
-          Number(mapping.quantity_per_unit) || 1;
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-semibold leading-tight">
+            {title}
+          </div>
 
-        return {
-          materialId: mapping.material_id,
-          materialName:
-            mapping.material_name ||
-            mat?.name ||
-            '—',
-          materialCode:
-            mapping.material_code ||
-            mat?.code ||
-            '',
-          qty,
-          unitLabel: 'pcs',
-          unitCost: price,
-          cost: qty * price,
-        };
+          {subtitle && (
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              {subtitle}
+            </div>
+          )}
+        </div>
+
+        <div className="text-right">
+          <div className="text-[11px] text-muted-foreground">
+            Subtotal
+          </div>
+
+          <div className="text-[13px] font-semibold tabular-nums">
+            {fmtMoney(subtotal)}
+          </div>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="px-3.5 py-3 text-[12px] text-muted-foreground italic">
+          Belum ada komponen terpetakan.
+        </div>
+      ) : (
+        <table className="w-full text-[12.5px]">
+          <thead className="text-[11px] text-muted-foreground bg-muted/20">
+            <tr>
+              <th className="text-left font-medium px-3.5 py-1.5">
+                Komponen
+              </th>
+              <th className="text-right font-medium px-2 py-1.5">
+                Qty
+              </th>
+              <th className="text-right font-medium px-2 py-1.5">
+                Harga Satuan
+              </th>
+              <th className="text-right font-medium px-3.5 py-1.5">
+                Subtotal
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((row, index) => (
+              <tr
+                key={`${row.materialId || row.materialCode || index}-${index}`}
+                className="border-t border-border/60"
+              >
+                <td className="px-3.5 py-1.5">
+                  <div className="font-medium leading-tight">
+                    {row.materialName}
+                  </div>
+
+                  <div className="text-[10.5px] text-muted-foreground font-mono">
+                    {row.materialCode || '—'}
+                    {row.isAuto ? ' · auto' : ''}
+                  </div>
+                </td>
+
+                <td className="text-right px-2 py-1.5 tabular-nums">
+                  {fmtQty(row.qty, row.unitLabel)}
+                </td>
+
+                <td className="text-right px-2 py-1.5 tabular-nums text-muted-foreground">
+                  {fmtMoney(row.unitCost)}
+                </td>
+
+                <td className="text-right px-3.5 py-1.5 tabular-nums font-medium">
+                  {fmtMoney(row.cost)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {perBottleNote && (
+        <div className="px-3.5 py-1.5 border-t border-border/60 bg-muted/20 text-[11.5px] text-muted-foreground">
+          {perBottleNote}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Hpp() {
+  const { toast } = useToast();
+
+  const [products, setProducts] = useState([]);
+  const [materials, setMaterials] = useState([]);
+  const [recipes, setRecipes] = useState([]);
+
+  const [ingredients, setIngredients] = useState([]);
+  const [mappings, setMappings] = useState([]);
+  const [stockLedger, setStockLedger] = useState([]);
+
+  const [recipe, setRecipe] = useState(null);
+  const [recipeSourceProductId, setRecipeSourceProductId] =
+    useState('');
+
+  const [productId, setProductId] = useState('');
+  const [loadingMeta, setLoadingMeta] = useState(true);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const loadMeta = useCallback(async () => {
+    setLoadingMeta(true);
+
+    try {
+      const [productRows, materialRows, recipeRows] =
+        await Promise.all([
+          base44.entities.Product.list(
+            '-created_date',
+            500
+          ),
+          base44.entities.Material.list(
+            '-created_date',
+            500
+          ),
+          base44.entities.Recipe.list(
+            '-created_date',
+            500
+          ),
+        ]);
+
+      setProducts(productRows || []);
+      setMaterials(materialRows || []);
+
+      setRecipes(
+        (recipeRows || []).filter(
+          row =>
+            row.recipe_type ===
+            'FINISHED_PRODUCT'
+        )
+      );
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Gagal memuat data HPP',
+        description: error?.message || '',
       });
+    } finally {
+      setLoadingMeta(false);
+    }
+  }, [toast]);
 
-  result.bottleRows = buildComp('bottle');
-  result.boxRows = buildComp('box');
-  result.labelRows = buildComp('label');
-  result.exciseRows = buildComp('excise');
+  useEffect(() => {
+    loadMeta();
+  }, [loadMeta]);
 
-  result.bottleTotal =
-    result.bottleRows.reduce(
-      (sum, row) => sum + row.cost,
-      0
-    );
+  const product = useMemo(
+    () =>
+      products.find(
+        item => item.id === productId
+      ) || null,
+    [products, productId]
+  );
 
-  result.boxTotal =
-    result.boxRows.reduce(
-      (sum, row) => sum + row.cost,
-      0
-    );
-
-  result.labelTotal =
-    result.labelRows.reduce(
-      (sum, row) => sum + row.cost,
-      0
-    );
-
-  result.exciseTotal =
-    result.exciseRows.reduce(
-      (sum, row) => sum + row.cost,
-      0
-    );
-
-  /*
-   * ACTUAL HPP
-   */
-  const actual =
-    getActualHppFromLedger(
-      stockLedger,
-      product.id
-    );
-
-  if (actual) {
-    result.useActual = true;
-    result.actualHpp = actual;
-    result.hppPerBottle =
-      actual.actualHppPerUnit;
-
-    if (
-      actual.transactionType === 'production_output' ||
-      actual.transactionType === 'premix_output'
-    ) {
-      result.bulkPerBottle =
-        actual.actualHppPerUnit;
+  useEffect(() => {
+    if (!product) {
+      setRecipe(null);
+      setRecipeSourceProductId('');
+      setIngredients([]);
+      setMappings([]);
+      setStockLedger([]);
+      return;
     }
 
-    if (actual.transactionType === 'bottling_output') {
-      result.bulkPerBottle =
-        actual.previousStagePerBottle ||
-        Math.max(
-          0,
-          actual.actualHppPerUnit -
-          actual.bottlePerBottle
+    let alive = true;
+
+    (async () => {
+      setLoadingDetail(true);
+
+      try {
+        /*
+         * Mapping SELALU milik final product.
+         *
+         * StockLedger diperlukan untuk:
+         * - Actual HPP
+         * - Menelusuri source product maklon
+         */
+        const [maps, ledger] =
+          await Promise.all([
+            base44.entities.ProductComponentMapping.filter({
+              product_id: product.id,
+            }),
+            base44.entities.StockLedger.list(
+              '-created_date',
+              1000
+            ),
+          ]);
+
+        if (!alive) return;
+
+        let selectedRecipe =
+          pickProductRecipe(
+            recipes,
+            product.id
+          );
+
+        let sourceProductId =
+          product.id;
+
+        /*
+         * Jika final product tidak punya recipe:
+         *
+         * YMMY labeling_output
+         *   ↓ reference_id
+         * IZZI labeling_consumption
+         *   ↓ item_id
+         * Recipe IZZI
+         */
+        if (!selectedRecipe) {
+          const maklonSourceId =
+            findMaklonSourceProductId(
+              ledger,
+              product.id
+            );
+
+          if (maklonSourceId) {
+            const sourceRecipe =
+              pickProductRecipe(
+                recipes,
+                maklonSourceId
+              );
+
+            if (sourceRecipe) {
+              selectedRecipe =
+                sourceRecipe;
+
+              sourceProductId =
+                maklonSourceId;
+            }
+          }
+        }
+
+        const recipeIngredients =
+          selectedRecipe
+            ? await base44.entities.RecipeIngredient.filter({
+                recipe_id:
+                  selectedRecipe.id,
+              })
+            : [];
+
+        if (!alive) return;
+
+        setMappings(maps || []);
+        setStockLedger(ledger || []);
+        setRecipe(selectedRecipe);
+        setRecipeSourceProductId(
+          sourceProductId
         );
+        setIngredients(
+          recipeIngredients || []
+        );
+      } catch (error) {
+        if (!alive) return;
 
-      result.bottleTotal =
-        actual.bottlePerBottle;
-    }
+        setRecipe(null);
+        setRecipeSourceProductId('');
+        setIngredients([]);
+        setMappings([]);
+        setStockLedger([]);
 
-    if (actual.transactionType === 'labeling_output') {
-      /*
-       * Previous stage sudah mengandung
-       * bulk + bottling.
-       */
-      result.bulkPerBottle =
-        actual.previousStagePerBottle;
+        toast({
+          variant: 'destructive',
+          title:
+            'Gagal memuat detail HPP',
+          description:
+            error?.message || '',
+        });
+      } finally {
+        if (alive) {
+          setLoadingDetail(false);
+        }
+      }
+    })();
 
-      result.labelTotal =
-        actual.labelPerBottle;
-    }
+    return () => {
+      alive = false;
+    };
+  }, [product, recipes, toast]);
 
-    if (actual.transactionType === 'excise_output') {
-      /*
-       * Previous stage sudah mengandung
-       * bulk + bottle + label.
-       */
-      result.bulkPerBottle =
-        actual.previousStagePerBottle;
+  const pgMaterial = useMemo(
+    () =>
+      materials.find(
+        material =>
+          material.material_category ===
+          'propylene_glycol'
+      ),
+    [materials]
+  );
 
-      result.exciseTotal =
-        actual.excisePerBottle;
-    }
-  } else {
-    result.hppPerBottle =
-      result.bulkPerBottle +
-      result.bottleTotal +
-      result.boxTotal +
-      result.labelTotal +
-      result.exciseTotal;
-  }
+  const vgMaterial = useMemo(
+    () =>
+      materials.find(
+        material =>
+          material.material_category ===
+          'vegetable_glycerin'
+      ),
+    [materials]
+  );
 
-  result.margin =
-    result.salePrice -
-    result.hppPerBottle;
+  const hpp = useMemo(
+    () =>
+      computeProductHpp({
+        product,
+        recipe,
+        ingredients,
+        materials,
+        mappings,
+        pgMaterial,
+        vgMaterial,
+        stockLedger,
+      }),
+    [
+      product,
+      recipe,
+      ingredients,
+      materials,
+      mappings,
+      pgMaterial,
+      vgMaterial,
+      stockLedger,
+    ]
+  );
 
-  result.marginPct =
-    result.salePrice > 0
-      ? (
-          result.margin /
-          result.salePrice
-        ) * 100
-      : 0;
+  const recipeSourceProduct = useMemo(
+    () =>
+      products.find(
+        item =>
+          item.id ===
+          recipeSourceProductId
+      ) || null,
+    [products, recipeSourceProductId]
+  );
 
-  return result;
+  const isMaklonRecipe =
+    !!product &&
+    !!recipe &&
+    !!recipeSourceProductId &&
+    recipeSourceProductId !== product.id;
+
+  const productOptions = useMemo(() => {
+    const finished = products.filter(
+      item =>
+        FINISHED_TYPES.includes(
+          item.product_type
+        )
+    );
+
+    const source =
+      finished.length
+        ? finished
+        : products;
+
+    return source.map(item => ({
+      value: item.id,
+      label:
+        `${item.name}` +
+        `${item.brand_name ? ` · ${item.brand_name}` : ''}` +
+        `${item.bottle_size ? ` (${item.bottle_size}ml)` : ''}`,
+      keywords:
+        `${item.code || ''} ${item.name || ''} ${item.brand_name || ''}`,
+    }));
+  }, [products]);
+
+  const sourceLabel = hpp?.useActual
+    ? `Aktual · ${hpp.actualHpp?.transactionType || 'StockLedger'}`
+    : isMaklonRecipe
+      ? `Standar · Recipe ${recipeSourceProduct?.name || 'produk sumber'} + Mapping ${product?.name || 'produk hasil'}`
+      : 'Standar / Mapping';
+
+  return (
+    <div className="p-5 max-w-[1100px] mx-auto">
+      <PageHeader
+        title="HPP Produk"
+        description="HPP aktual dari transaksi jika tersedia. Produk maklon dapat memakai recipe produk sumber dan mapping produk hasil."
+      />
+
+      <div className="rounded-lg border border-border bg-card p-4 mb-4">
+        <Label className="text-[12.5px] mb-1.5">
+          Pilih Produk
+        </Label>
+
+        {loadingMeta ? (
+          <div className="h-9 bg-muted/40 rounded animate-pulse" />
+        ) : (
+          <SearchableSelect
+            value={productId}
+            onValueChange={setProductId}
+            options={productOptions}
+            placeholder="Cari produk..."
+            className="h-9"
+          />
+        )}
+      </div>
+
+      {!product &&
+        !loadingMeta && (
+          <div className="rounded-lg border border-dashed border-border p-10 text-center text-muted-foreground text-[13px]">
+            Pilih produk untuk melihat rincian HPP.
+          </div>
+        )}
+
+      {product &&
+        loadingDetail && (
+          <div className="rounded-lg border border-border bg-card p-6 mb-4">
+            <div className="h-5 w-40 bg-muted rounded animate-pulse mb-3" />
+            <div className="h-4 w-72 bg-muted rounded animate-pulse" />
+          </div>
+        )}
+
+      {product &&
+        hpp &&
+        !loadingDetail && (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="rounded-lg border border-border bg-card p-3">
+                <div className="text-[11px] text-muted-foreground">
+                  Ukuran Botol
+                </div>
+
+                <div className="text-[16px] font-semibold tabular-nums mt-0.5">
+                  {hpp.bottleSize || '—'}
+                  {hpp.bottleSize
+                    ? ' ml'
+                    : ''}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border bg-card p-3">
+                <div className="text-[11px] text-muted-foreground">
+                  HPP / Botol
+
+                  {hpp.useActual && (
+                    <span className="ml-1 font-semibold text-emerald-600">
+                      · Aktual
+                    </span>
+                  )}
+                </div>
+
+                <div className="text-[16px] font-semibold tabular-nums mt-0.5 text-primary">
+                  {fmtMoney(
+                    hpp.hppPerBottle
+                  )}
+                </div>
+
+                <div className="text-[10.5px] text-muted-foreground mt-0.5">
+                  {sourceLabel}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border bg-card p-3">
+                <div className="text-[11px] text-muted-foreground">
+                  Harga Jual
+                </div>
+
+                <div className="text-[16px] font-semibold tabular-nums mt-0.5">
+                  {fmtMoney(
+                    hpp.salePrice
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border bg-card p-3">
+                <div className="text-[11px] text-muted-foreground">
+                  Margin / Botol
+                </div>
+
+                <div
+                  className={`text-[16px] font-semibold tabular-nums mt-0.5 ${
+                    hpp.margin >= 0
+                      ? 'text-emerald-600'
+                      : 'text-destructive'
+                  }`}
+                >
+                  {fmtMoney(
+                    hpp.margin
+                  )}
+
+                  {hpp.salePrice > 0 && (
+                    <span className="text-[11px] font-normal text-muted-foreground ml-1">
+                      (
+                      {hpp.marginPct.toFixed(
+                        1
+                      )}
+                      %)
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {isMaklonRecipe && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 mb-4 text-[12px] text-blue-700">
+                Produk hasil{' '}
+                <strong>
+                  {product.name}
+                </strong>{' '}
+                menggunakan Recipe dari produk sumber{' '}
+                <strong>
+                  {recipeSourceProduct?.name ||
+                    'produk sumber'}
+                </strong>
+                . Mapping botol, box, label, dan cukai tetap menggunakan produk hasil.
+              </div>
+            )}
+
+            {!hpp.hasRecipe &&
+              !hpp.useActual && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 mb-4 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+
+                  <div className="text-[12px] text-amber-700">
+                    Tidak ditemukan Recipe langsung maupun Recipe produk sumber.
+                    Mapping produk tetap dihitung. Jika sudah ada output transaksi dengan unit_cost,
+                    HPP aktual tetap dapat dibaca dari StockLedger.
+                  </div>
+                </div>
+              )}
+
+            {hpp.hasRecipe &&
+              hpp.validation &&
+              !hpp.validation.valid && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 mb-4 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+
+                  <div className="text-[12px] text-amber-700">
+                    Resep memiliki validasi yang belum lolos:{' '}
+                    {hpp.validation.errors.join(
+                      '; '
+                    )}
+                  </div>
+                </div>
+              )}
+
+            <div className="mb-3">
+              <StageCard
+                icon={FlaskConical}
+                color="text-blue-600"
+                title="1. Bahan Bulk (Mixing)"
+                subtitle={
+                  recipe
+                    ? `${isMaklonRecipe ? 'Recipe sumber' : 'Recipe'} ${recipe.code || ''} v${recipe.version || 1} · target ${hpp.volume} ml`
+                    : 'Tidak ada Recipe'
+                }
+                rows={hpp.bulkRows}
+                subtotal={hpp.bulkTotal}
+                perBottleNote={`Per botol: ${fmtMoney(hpp.bulkPerBottle)}`}
+              />
+            </div>
+
+            <div className="mb-3">
+              <StageCard
+                icon={Package}
+                color="text-violet-600"
+                title="2. Botol (Bottling)"
+                subtitle={
+                  hpp.useActual &&
+                  hpp.actualHpp?.transactionType ===
+                    'bottling_output'
+                    ? 'Cost aktual dari transaksi Bottling'
+                    : 'Komponen botol dari mapping produk hasil'
+                }
+                rows={hpp.bottleRows}
+                subtotal={hpp.bottleTotal}
+                perBottleNote={`Per botol: ${fmtMoney(hpp.bottleTotal)}`}
+              />
+            </div>
+
+            <div className="mb-3">
+              <StageCard
+                icon={Box}
+                color="text-orange-600"
+                title="3. Box (Kemasan Luar)"
+                subtitle="Komponen box/kemasan dari mapping produk hasil"
+                rows={hpp.boxRows}
+                subtotal={hpp.boxTotal}
+                perBottleNote={`Per botol: ${fmtMoney(hpp.boxTotal)}`}
+              />
+            </div>
+
+            <div className="mb-3">
+              <StageCard
+                icon={Tag}
+                color="text-pink-600"
+                title="4. Label / Stiker (Labeling)"
+                subtitle={
+                  hpp.useActual &&
+                  hpp.actualHpp?.transactionType ===
+                    'labeling_output'
+                    ? 'Cost aktual dari transaksi Labeling'
+                    : 'Komponen label dari mapping produk hasil'
+                }
+                rows={hpp.labelRows}
+                subtotal={hpp.labelTotal}
+                perBottleNote={`Per botol: ${fmtMoney(hpp.labelTotal)}`}
+              />
+            </div>
+
+            <div className="mb-3">
+              <StageCard
+                icon={Stamp}
+                color="text-amber-600"
+                title="5. Pita Cukai (Cukai)"
+                subtitle={
+                  hpp.useActual &&
+                  hpp.actualHpp?.transactionType ===
+                    'excise_output'
+                    ? 'Cost aktual dari transaksi Cukai'
+                    : 'Komponen pita cukai dari mapping produk hasil'
+                }
+                rows={hpp.exciseRows}
+                subtotal={hpp.exciseTotal}
+                perBottleNote={`Per botol: ${fmtMoney(hpp.exciseTotal)}`}
+              />
+            </div>
+
+            <div className="rounded-lg border-2 border-primary bg-primary/5 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Calculator className="w-4 h-4 text-primary" />
+
+                <div className="text-[13px] font-semibold">
+                  Akumulasi HPP per Botol
+                </div>
+              </div>
+
+              <div className="space-y-1.5 text-[12.5px]">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Bulk / Tahap Sebelumnya
+                  </span>
+
+                  <span className="tabular-nums">
+                    {fmtMoney(
+                      hpp.bulkPerBottle
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Botol
+                  </span>
+
+                  <span className="tabular-nums">
+                    {fmtMoney(
+                      hpp.bottleTotal
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Box
+                  </span>
+
+                  <span className="tabular-nums">
+                    {fmtMoney(
+                      hpp.boxTotal
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Label / Stiker
+                  </span>
+
+                  <span className="tabular-nums">
+                    {fmtMoney(
+                      hpp.labelTotal
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Pita Cukai / Kemasan
+                  </span>
+
+                  <span className="tabular-nums">
+                    {fmtMoney(
+                      hpp.exciseTotal
+                    )}
+                  </span>
+                </div>
+
+                <div className="border-t border-primary/20 pt-1.5 flex justify-between items-center">
+                  <span className="font-semibold">
+                    Total HPP / Botol
+                  </span>
+
+                  <span className="text-[16px] font-bold tabular-nums text-primary">
+                    {fmtMoney(
+                      hpp.hppPerBottle
+                    )}
+                  </span>
+                </div>
+
+                {hpp.salePrice > 0 && (
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      Margin
+                    </span>
+
+                    <span
+                      className={`tabular-nums font-semibold ${
+                        hpp.margin >= 0
+                          ? 'text-emerald-600'
+                          : 'text-destructive'
+                      }`}
+                    >
+                      {fmtMoney(
+                        hpp.margin
+                      )}{' '}
+                      (
+                      {hpp.marginPct.toFixed(
+                        1
+                      )}
+                      %)
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 text-[11px] text-muted-foreground">
+              {hpp.useActual ? (
+                <>
+                  HPP{' '}
+                  <span className="font-medium text-emerald-600">
+                    aktual
+                  </span>{' '}
+                  menggunakan snapshot{' '}
+                  <span className="font-medium">
+                    StockLedger output.unit_cost
+                  </span>
+                  {hpp.actualHpp?.batchNumber
+                    ? ` · batch ${hpp.actualHpp.batchNumber}`
+                    : ''}
+                  . Recipe digunakan untuk rincian bahan, sedangkan mapping tetap berasal dari produk hasil.
+                </>
+              ) : isMaklonRecipe ? (
+                <>
+                  HPP standar menggunakan Recipe{' '}
+                  <span className="font-medium">
+                    {recipeSourceProduct?.name}
+                  </span>{' '}
+                  sebagai sumber formula dan ProductComponentMapping{' '}
+                  <span className="font-medium">
+                    {product.name}
+                  </span>{' '}
+                  sebagai sumber kemasan final.
+                </>
+              ) : (
+                <>
+                  HPP standar dihitung dari Recipe jika tersedia,
+                  harga beli terakhir bahan, dan ProductComponentMapping produk.
+                </>
+              )}
+            </div>
+          </>
+        )}
+    </div>
+  );
 }
