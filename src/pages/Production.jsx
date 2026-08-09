@@ -59,21 +59,30 @@ const PRODUCTION_ORDER = {
 ========================================================== */
 
 /**
- * Material dengan material_type PREMIX
- * menggunakan rule produksi:
+ * Rule produksi finished product:
  *
- * 1 ml = 1 gram
- *
- * Rule ini hanya untuk kebutuhan produksi resep finished product.
- *
- * PG / VG RAW MATERIAL tetap menggunakan density.
+ * - Sweetener PREMIX = 1 ml : 1 gram
+ * - Cooling PREMIX   = 1 ml : 1 gram
+ * - Nicotine PREMIX  = menggunakan density aktual
+ * - PG / VG RAW MATERIAL = menggunakan density aktual
  */
 const isOneToOnePremix = (material) => {
   if (!material) return false;
 
-  return String(
+  const type = String(
     material.material_type || ''
-  ).toUpperCase() === 'PREMIX';
+  ).toUpperCase();
+
+  const category = String(
+    material.material_category || ''
+  ).toLowerCase();
+
+  if (type !== 'PREMIX') return false;
+
+  return [
+    'sweetener',
+    'cooling',
+  ].includes(category);
 };
 
 
