@@ -60,23 +60,44 @@ export default function Recipes() {
   });
 
   const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [items, brs, prods, mats] = await Promise.all([
-        base44.entities.Recipe.list('-created_date', 200),
-        base44.entities.Brand.filter({ is_active: true }),
-        base44.entities.Product.filter({ is_active: true }),
-        base44.entities.Material.list('-created_date', 2000),
-      ]);
-      setData(items);
-      setBrands(brs);
-      setProducts(prods);
-      // DIAGNOSTIC PATCH: pass all active materials to the picker.
-      // This proves whether PG/VG disappear before RecipeIngredientPicker.
-      setMaterials(mats.filter(m => m.is_active !== false));
-    } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
-    finally { setLoading(false); }
-  }, [toast]);
+  setLoading(true);
+
+  try {
+    const [items, brs, prods, mats] = await Promise.all([
+      base44.entities.Recipe.list('-created_date', 200),
+      base44.entities.Brand.filter({ is_active: true }),
+      base44.entities.Product.filter({ is_active: true }),
+      base44.entities.Material.list('-created_date', 2000),
+    ]);
+
+    setData(items);
+    setBrands(brs);
+    setProducts(prods);
+
+    setMaterials(
+      mats.filter(m => {
+        if (m.is_active === false) return false;
+
+        const category = String(
+          m.material_category || ''
+        ).toLowerCase();
+
+        return ![
+          'box',
+          'label',
+          'excise',
+        ].includes(category);
+      })
+    );
+  } catch {
+    toast({
+      variant: 'destructive',
+      title: 'Gagal memuat data',
+    });
+  } finally {
+    setLoading(false);
+  }
+ }, [toast]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
