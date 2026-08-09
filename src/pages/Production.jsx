@@ -61,10 +61,12 @@ const PRODUCTION_ORDER = {
 /**
  * Rule produksi finished product:
  *
- * - Sweetener PREMIX = 1 ml : 1 gram
- * - Cooling PREMIX   = 1 ml : 1 gram
- * - Nicotine PREMIX  = menggunakan density aktual
- * - PG / VG RAW MATERIAL = menggunakan density aktual
+ * - Sweetener = 1 ml : 1 gram
+ * - Cooling   = 1 ml : 1 gram
+ * - Nicotine  = menggunakan density aktual
+ * - PG / VG   = menggunakan density aktual
+ *
+ * Mendukung data lama yang material_category-nya kosong.
  */
 const isOneToOnePremix = (material) => {
   if (!material) return false;
@@ -73,16 +75,29 @@ const isOneToOnePremix = (material) => {
     material.material_type || ''
   ).toUpperCase();
 
+  if (type !== 'PREMIX') return false;
+
   const category = String(
     material.material_category || ''
   ).toLowerCase();
 
-  if (type !== 'PREMIX') return false;
+  const name = String(
+    material.name || ''
+  ).toLowerCase();
 
-  return [
-    'sweetener',
-    'cooling',
-  ].includes(category);
+  const isSweetener =
+    category === 'sweetener' ||
+    name.includes('sweetener') ||
+    name.includes('sucralose');
+
+  const isCooling =
+    category === 'cooling' ||
+    name.includes('cooling') ||
+    name.includes('chiller') ||
+    name.includes('ws23') ||
+    name.includes('ws-23');
+
+  return isSweetener || isCooling;
 };
 
 
