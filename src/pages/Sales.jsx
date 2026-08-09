@@ -415,6 +415,84 @@ export default function Sales() {
     };
   };
 
+
+  const hppSnapshotCache = new Map();
+
+  const ledgerTime = row =>
+    new Date(row?.transaction_date || row?.created_date || 0).getTime();
+
+  const resolveFinalHpp = async item => {
+    const stock =
+      allStock.find(s => s.id === item.stock_id) ||
+      getStockByItem(item);
+
+    const productId = item.product_id || stock?.item_id || '';
+    const batchNumber = item.batch_number || stock?.batch_number || '';
+    const batchId = stock?.batch_id || '';
+    const cacheKey = `${productId}|${batchId}|${batchNumber}`;
+
+    if (hppSnapshotCache.has(cacheKey)) {
+      return hppSnapshotCache.get(cacheKey);
+    }
+
+    const filter = {
+      item_id: productId,
+      inventory_status: 'READY_FOR_SALE',
+      transaction_type: 'excise_output',
+    };
+
+    if (batchId) filter.batch_id = batchId;
+    else if (batchNumber) filter.batch_number = batchNumber;
+
+    let rows = await base44.entities.StockLedger.filter(filter);
+
+    if ((!rows || rows.length === 0) && batchNumber) {
+      rows = await base44.entities.StockLedger.filter({
+        item_id: productId,
+        batch_number: batchNumber,
+        inventory_status: 'READY_FOR_SALE',
+      });
+    }
+
+    const finalRow = (rows || [])
+      .filter(row =>
+        Number(row.quantity_in) > 0 &&
+        Number(row.unit_cost) > 0
+      )
+      .sort((a, b) => ledgerTime(b) - ledgerTime(a))[0];
+
+    const hpp = Number(finalRow?.unit_cost) || 0;
+
+    if (!(hpp > 0)) {
+      throw new Error(
+        `HPP final READY_FOR_SALE tidak ditemukan untuk ${item.product_name || 'produk'}${batchNumber ? ` · ${batchNumber}` : ''}. Selesaikan alur sampai Cukai sebelum dijual.`
+      );
+    }
+
+    hppSnapshotCache.set(cacheKey, hpp);
+    return hpp;
+  };
+
+  const resolveSaleSnapshotHpp = async (sale, item) => {
+    const rows = await base44.entities.StockLedger.filter({
+      reference_id: sale.id,
+      transaction_type: 'sales',
+      item_id: item.product_id,
+    });
+
+    const batchNumber = item.batch_number || '';
+    const snapshot = (rows || [])
+      .filter(row =>
+        Number(row.quantity_out) > 0 &&
+        Number(row.unit_cost) > 0 &&
+        (!batchNumber || (row.batch_number || '') === batchNumber)
+      )
+      .sort((a, b) => ledgerTime(b) - ledgerTime(a))[0];
+
+    if (snapshot) return Number(snapshot.unit_cost) || 0;
+    return resolveFinalHpp(item);
+  };
+
   const buildSaleItems = saleId =>
     form.items.map(item => ({
       sale_id: saleId,
@@ -445,6 +523,8 @@ export default function Sales() {
         p => p.id === item.product_id
       );
 
+      const hppUnitSnapshot = await resolveFinalHpp(item);
+
       await recordStockMovement({
         item_type: 'product',
         item_id: item.product_id,
@@ -456,6 +536,7 @@ export default function Sales() {
         inventory_status: 'READY_FOR_SALE',
         quantity_out: Number(item.quantity),
         unit: item.unit || 'unit',
+        unit_cost: hppUnitSnapshot,
         transaction_type: 'sales',
         transaction_number: invoiceNumber,
         reference_type: 'sale',
@@ -476,6 +557,11 @@ export default function Sales() {
         p => p.id === item.product_id
       );
 
+      const hppUnitSnapshot = await resolveSaleSnapshotHpp(
+        sale,
+        item
+      );
+
       await recordStockMovement({
         item_type: 'product',
         item_id: item.product_id,
@@ -487,6 +573,7 @@ export default function Sales() {
         inventory_status: 'READY_FOR_SALE',
         quantity_in: Number(item.quantity),
         unit: item.unit || 'unit',
+        unit_cost: hppUnitSnapshot,
 
         /*
          * Tetap gunakan transaction_type sales
