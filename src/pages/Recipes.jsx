@@ -66,12 +66,14 @@ export default function Recipes() {
         base44.entities.Recipe.list('-created_date', 200),
         base44.entities.Brand.filter({ is_active: true }),
         base44.entities.Product.filter({ is_active: true }),
-        base44.entities.Material.filter({ material_type: { $in: ['RAW_MATERIAL', 'PREMIX'] }, is_active: true }),
+        base44.entities.Material.list('-created_date', 2000),
       ]);
       setData(items);
       setBrands(brs);
       setProducts(prods);
-      setMaterials(mats.filter(m => m.is_recipe_ingredient !== false));
+      // DIAGNOSTIC PATCH: pass all active materials to the picker.
+      // This proves whether PG/VG disappear before RecipeIngredientPicker.
+      setMaterials(mats.filter(m => m.is_active !== false));
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
     finally { setLoading(false); }
   }, [toast]);
