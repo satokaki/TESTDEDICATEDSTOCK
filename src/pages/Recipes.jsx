@@ -66,12 +66,12 @@ export default function Recipes() {
         base44.entities.Recipe.list('-created_date', 200),
         base44.entities.Brand.filter({ is_active: true }),
         base44.entities.Product.filter({ is_active: true }),
-        base44.entities.Material.filter({ material_type: { $in: ['RAW_MATERIAL', 'PREMIX'] }, is_active: true }),
+        base44.entities.Material.filter({ is_active: true }),
       ]);
       setData(items);
       setBrands(brs);
       setProducts(prods);
-      setMaterials(mats.filter(m => m.is_recipe_ingredient !== false));
+      setMaterials(mats.filter(m => ['RAW_MATERIAL', 'PREMIX'].includes(m.material_type) && m.is_recipe_ingredient !== false));
     } catch { toast({ variant: 'destructive', title: 'Gagal memuat data' }); }
     finally { setLoading(false); }
   }, [toast]);
